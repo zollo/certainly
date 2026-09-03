@@ -1,0 +1,49 @@
+# Certainly — container-based deployment.
+#
+# Three services:
+#   * redis  — job queue + result cache
+#   * api    — FastAPI app serving the web UI and the REST API
+#   * worker — RQ worker(s) executing scan jobs
+#
+# All configuration is via environment variables (see .env.example). Copy
+# .env.example to .env to customize, or set variables in your orchestrator.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${CERTAINLY_PORT:-8000}:8000"
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "certainly.worker"]
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Scale horizontally for more scanning throughput:
+    #   docker compose up --scale worker=3

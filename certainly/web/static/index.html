@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Certainly — SSL/TLS Analyzer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%92%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="brand-mark">🔒</span>
+        <div>
+          <h1>Certainly</h1>
+          <p class="tagline">Open-source SSL/TLS analyzer</p>
+        </div>
+      </div>
+      <a class="gh-link" href="https://github.com/zollo/certainly" target="_blank" rel="noopener">View source</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="intro">
+      <h2>Inspect the SSL/TLS posture of any server</h2>
+      <p>
+        Enter one or more hostnames or URLs. Certainly probes each server's
+        supported protocols, cipher suites, and certificate, then grades its
+        overall security posture from 0&ndash;100.
+      </p>
+    </section>
+
+    <section class="scan-form card">
+      <label for="targets" class="field-label">
+        Targets <span id="limit-hint" class="hint"></span>
+      </label>
+      <textarea
+        id="targets"
+        placeholder="example.com&#10;https://github.com&#10;badssl.com:443"
+        rows="5"
+        spellcheck="false"
+      ></textarea>
+      <div class="form-row">
+        <label class="checkbox">
+          <input type="checkbox" id="bypass-cache" />
+          <span>Bypass cache (force fresh scan)</span>
+        </label>
+        <button id="scan-btn" class="btn-primary">Analyze</button>
+      </div>
+      <p id="form-error" class="form-error" hidden></p>
+    </section>
+
+    <section id="status-panel" class="status-panel" hidden>
+      <div class="spinner"></div>
+      <span id="status-text">Queued…</span>
+    </section>
+
+    <section id="results" class="results"></section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>
+        Certainly is free and open source. Scores are informational and follow a
+        methodology inspired by the SSL Labs rating guide.
+      </p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
