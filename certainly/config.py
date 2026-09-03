@@ -30,8 +30,14 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", description="Bind address for the API server.")
     port: int = Field(default=8000, description="Port for the API server.")
     cors_allow_origins: list[str] = Field(
-        default_factory=lambda: ["*"],
-        description="Origins allowed to call the API from a browser.",
+        default_factory=list,
+        description=(
+            "Cross-origin origins allowed to call the API from a browser. "
+            "Empty by default: the bundled UI is same-origin, so no CORS access "
+            "is granted unless you explicitly configure it (e.g. '*' or a list). "
+            "Keeping this closed avoids turning an unauthenticated deployment "
+            "into an open scanning relay driven from a victim's browser."
+        ),
     )
 
     # --- Scan limits -------------------------------------------------------

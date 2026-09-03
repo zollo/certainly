@@ -25,6 +25,17 @@ PROTOCOL_VERSIONS: list[tuple[str, "ssl.TLSVersion"]] = [
 # Protocols considered secure for scoring purposes.
 SECURE_PROTOCOLS = {"TLSv1.2", "TLSv1.3"}
 
+# ``SSLSocket.version()`` reports TLS 1.0 as the bare string "TLSv1", not
+# "TLSv1.0". Map our display names to the value the socket actually returns
+# so protocol-support detection compares like with like.
+_VERSION_STRING = {
+    "SSLv3": "SSLv3",
+    "TLSv1.0": "TLSv1",
+    "TLSv1.1": "TLSv1.1",
+    "TLSv1.2": "TLSv1.2",
+    "TLSv1.3": "TLSv1.3",
+}
+
 # Substrings that mark a cipher as weak/broken.
 _WEAK_MARKERS = ("RC4", "DES", "3DES", "NULL", "EXPORT", "MD5", "ANON", "ADH", "AECDH", "IDEA", "SEED")
 _FS_MARKERS = ("ECDHE", "DHE")
@@ -151,7 +162,7 @@ def probe_protocol(hostname: str, port: int, version_name: str,
         with socket.create_connection((hostname, port), timeout=timeout) as sock:
             with ctx.wrap_socket(sock, server_hostname=hostname) as tls:
                 negotiated = tls.version()
-                return negotiated == version_name
+                return negotiated == _VERSION_STRING.get(version_name, version_name)
     except (ssl.SSLError, socket.timeout, OSError, ValueError):
         return False
 

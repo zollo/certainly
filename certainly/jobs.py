@@ -28,6 +28,16 @@ _JOB_PREFIX = "certainly:job:"
 _MEMORY_JOBS: dict[str, str] = {}
 
 
+class QueueUnavailableError(RuntimeError):
+    """Raised when a scan cannot be queued because Redis is unreachable.
+
+    This is deliberately surfaced (as HTTP 503) rather than silently running
+    the scan inline: doing heavy synchronous work inside the API process would
+    risk request timeouts and tie up web workers. Set
+    ``CERTAINLY_USE_INLINE_WORKER=true`` to run scans in-process on purpose.
+    """
+
+
 # --------------------------------------------------------------------------- #
 # Redis / queue plumbing
 # --------------------------------------------------------------------------- #
@@ -127,11 +137,13 @@ def submit_scan(targets: list[str], bypass_cache: bool,
 
     redis_client = get_redis(settings)
     if redis_client is None:
-        # No Redis available: fall back to running inline so the request
-        # still succeeds rather than hanging forever as "queued".
-        execute_job(job.job_id, targets, bypass_cache)
-        refreshed = store.get(job.job_id)
-        return refreshed or job
+        # Fail fast rather than silently running a heavy scan synchronously in
+        # the API process. Inline execution is opt-in via USE_INLINE_WORKER.
+        raise QueueUnavailableError(
+            "Job queue is unavailable (cannot reach Redis). Ensure Redis is "
+            "running, or set CERTAINLY_USE_INLINE_WORKER=true to run scans "
+            "in-process."
+        )
 
     queue = get_queue(settings, redis_client)
     queue.enqueue(

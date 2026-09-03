@@ -1,7 +1,6 @@
 """X.509 certificate parsing and validation helpers."""
 from __future__ import annotations
 
-import ssl
 from datetime import datetime, timezone
 
 from cryptography import x509
@@ -61,13 +60,8 @@ def _key_details(cert: x509.Certificate) -> tuple[str, int | None]:
 def _hostname_matches(hostname: str, cert_der: bytes) -> bool:
     """Validate that ``hostname`` matches the certificate's names.
 
-    Uses the standard library matcher, which understands wildcard rules.
+    Implements RFC 6125-style matching, including single-label wildcards.
     """
-    try:
-        decoded = ssl._ssl._test_decode_cert  # type: ignore[attr-defined]
-    except AttributeError:  # pragma: no cover
-        decoded = None
-
     cert = x509.load_der_x509_certificate(cert_der)
     names = set(_extract_sans(cert))
     cn = None

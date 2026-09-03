@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .jobs import get_job, submit_scan
+from .jobs import QueueUnavailableError, get_job, submit_scan
 from .models import JobStatus, ScanRequest, SubmitResponse
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
@@ -62,7 +62,10 @@ def create_scan(request: ScanRequest, http_request: Request) -> SubmitResponse:
             detail=f"Too many targets: {len(targets)} provided, maximum is {limit}.",
         )
 
-    job = submit_scan(targets, bypass_cache=request.bypass_cache, settings=settings)
+    try:
+        job = submit_scan(targets, bypass_cache=request.bypass_cache, settings=settings)
+    except QueueUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
     base = str(http_request.base_url).rstrip("/")
     return SubmitResponse(

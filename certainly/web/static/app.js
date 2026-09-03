@@ -137,7 +137,21 @@ function renderHost(host) {
   // ---- Header ----
   const head = document.createElement("div");
   head.className = "result-head";
-  head.onclick = () => card.classList.toggle("open");
+  // Make the toggle keyboard-accessible and expose its state to assistive tech.
+  head.setAttribute("role", "button");
+  head.setAttribute("tabindex", "0");
+  head.setAttribute("aria-expanded", "false");
+  const toggle = () => {
+    const open = card.classList.toggle("open");
+    head.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
+  });
 
   const badge = document.createElement("div");
   badge.className = "grade-badge " + gradeClass(host.grade);

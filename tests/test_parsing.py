@@ -38,6 +38,12 @@ def test_parse_empty_raises():
         parse_target("   ", 443)
 
 
+def test_parse_invalid_port_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        parse_target("example.com:notaport", 443)
+
+
 def test_classify_modern_cipher_is_strong_fs_aead():
     c = classify_cipher("ECDHE-RSA-AES256-GCM-SHA384", "TLSv1.2", 256)
     assert c.strong and c.forward_secrecy and c.aead

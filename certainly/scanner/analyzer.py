@@ -6,7 +6,7 @@ fans out across many hosts using a thread pool (network I/O bound work).
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -47,8 +47,7 @@ def parse_target(raw: str, default_port: int) -> ParsedTarget:
         try:
             port = int(port_str)
         except ValueError:
-            hostname = value
-            port = default_port
+            raise ValueError(f"invalid port {port_str!r} in target {raw!r}")
     else:
         hostname = value
         port = default_port
@@ -145,6 +144,9 @@ def analyze_targets(raws: list[str], default_port: int, timeout: float,
             pool.submit(analyze_target, raw, default_port, timeout, probe_workers): i
             for i, raw in enumerate(raws)
         }
-        for future, index in future_to_index.items():
+        # Consume as each host finishes so a slow host doesn't hold up writing
+        # results that are already done; the index keeps input order intact.
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
             results[index] = future.result()
     return [r for r in results if r is not None]
