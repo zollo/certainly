@@ -1,0 +1,34 @@
+# Keep the build context small and reproducible.
+.git
+.gitignore
+.github
+
+# Local virtualenvs / Python caches
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+build
+dist
+
+# Tooling / test caches
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Local config and secrets (never bake into the image)
+.env
+
+# Editor / OS cruft
+.idea
+.vscode
+.DS_Store
+
+# Docs that don't belong in the runtime image
+*.md
+!README.md

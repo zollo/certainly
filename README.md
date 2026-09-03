@@ -36,6 +36,20 @@ adding workers:
 docker compose up --scale worker=3
 ```
 
+### Using the pre-built image
+
+Every push to `main` publishes a multi-arch image (linux/amd64 + arm64) to the
+GitHub Container Registry via CI. Pull it directly instead of building:
+
+```bash
+docker pull ghcr.io/zollo/certainly:latest
+```
+
+Tags include `latest` (main), `main`, a short commit SHA, and — for release
+tags like `v1.2.3` — the matching `1.2.3` and `1.2` versions. Point the
+`image:` field of both the `api` and `worker` services at the published image
+to run without a local build.
+
 ## Quick start (local, no Docker)
 
 Certainly needs Redis for the job queue and cache. For quick local development
