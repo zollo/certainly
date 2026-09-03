@@ -52,6 +52,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Setting an explicit permissions block defaults every unlisted scope to
+      # `none`. Grant `actions: write` so the buildx GitHub Actions cache
+      # backend (cache-from/to: type=gha) can always read and write cache
+      # entries, keeping the intended CI layer-caching speedups.
+      actions: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
