@@ -1,0 +1,78 @@
+# Certainly — TrueNAS SCALE Custom App (Electric Eel 24.10+)
+#
+# HOW TO INSTALL
+#   Apps  ->  (three-dot menu next to "Custom App")  ->  Install via YAML
+#   Give the app a name (e.g. "certainly"), paste this file, then edit the
+#   three values marked "EDIT" below, and click Save.
+#
+# WHAT TO EDIT
+#   1. The Redis volume host path -> point it at a dataset on YOUR pool.
+#   2. The published web port      -> pick a free host port (TrueNAS uses
+#                                     80/443; app ports are typically 30000+).
+#   3. (optional) the image tag    -> pin a version instead of :latest.
+#
+# TrueNAS renders this with Docker Compose. There is no external .env file in
+# the YAML installer, so values are set inline here rather than via ${VARS}.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Persist the job/result store so cached scans survive restarts/updates.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      # EDIT (1): change "tank" to your pool and create this dataset first via
+      # Datasets in the TrueNAS UI (e.g. tank/apps/certainly/redis). The path
+      # here must be the dataset's mountpoint under /mnt.
+      - /mnt/tank/apps/certainly/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    # EDIT (3, optional): pin a version, e.g. ghcr.io/zollo/certainly:1.0.0
+    image: ghcr.io/zollo/certainly:latest
+    restart: unless-stopped
+    ports:
+      # EDIT (2): host:container. Change 30080 to any free host port; the UI
+      # will then be reachable at http://<truenas-ip>:30080
+      - "30080:8000"
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+      # --- Optional tuning (uncomment and adjust) ---
+      # CERTAINLY_MAX_TARGETS_PER_REQUEST: "10"
+      # CERTAINLY_CACHE_TTL_SECONDS: "86400"
+      # CERTAINLY_SCAN_CONCURRENCY: "10"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # The image ships Python but not curl; probe /api/health with urllib and
+      # exit quietly on failure (no stack traces in the health log).
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          try:
+              ok = urllib.request.urlopen("http://localhost:8000/api/health", timeout=3).status == 200
+          except Exception:
+              ok = False
+          sys.exit(0 if ok else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  worker:
+    image: ghcr.io/zollo/certainly:latest
+    restart: unless-stopped
+    command: ["python", "-m", "certainly.worker"]
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
