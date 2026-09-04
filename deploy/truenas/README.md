@@ -29,8 +29,9 @@ the data lives on your pool and is included in snapshots:
      dataset mountpoint from step 1.
    - **Web port** — change `30080` if that host port is taken. (Avoid 80/443,
      which the TrueNAS UI uses.)
-   - **Image tag** *(optional)* — pin a version, e.g.
-     `ghcr.io/zollo/certainly:1.0.0`, instead of `:latest`.
+   - **Image tag** *(optional)* — pin a version on the single `x-image:` line
+     near the top, e.g. `ghcr.io/zollo/certainly:1.0.0` instead of `:latest`
+     (both `api` and `worker` reference it, so they stay in sync).
 6. Click **Save**. TrueNAS pulls the images and starts the three services
    (`api`, `worker`, `redis`).
 
