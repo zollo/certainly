@@ -71,6 +71,12 @@ it inline or in a `.env` file alongside any other `CERTAINLY_*` settings and
 production file also enables Redis persistence (so cached results and job
 records survive restarts) and adds container health checks.
 
+### TrueNAS SCALE
+
+To run Certainly as a **Custom App** on TrueNAS SCALE (Electric Eel 24.10+),
+see [`deploy/truenas/`](deploy/truenas/) — it includes a ready-to-paste
+Compose file and step-by-step install instructions.
+
 ## Quick start (local, no Docker)
 
 Certainly needs Redis for the job queue and cache. For quick local development
