@@ -48,14 +48,21 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # The image has Python but not curl; use urllib for the probe.
+      # The image has Python but not curl; use urllib for the probe. Failures
+      # (connection refused during startup, non-200, etc.) exit non-zero
+      # quietly instead of dumping a stack trace into the health log, and the
+      # request carries its own timeout.
       test:
         - CMD
         - python
         - -c
-        - >-
-          import sys, urllib.request;
-          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status == 200 else 1)
+        - |
+          import sys, urllib.request
+          try:
+              ok = urllib.request.urlopen("http://localhost:8000/api/health", timeout=3).status == 200
+          except Exception:
+              ok = False
+          sys.exit(0 if ok else 1)
       interval: 30s
       timeout: 5s
       retries: 3
