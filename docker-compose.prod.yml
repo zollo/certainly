@@ -1,0 +1,79 @@
+# Certainly — production deployment.
+#
+# Unlike docker-compose.yml (which builds the image from source), this file
+# pulls the pre-built image published to the GitHub Container Registry, so a
+# deployment needs only this file and Docker.
+#
+# The image version is parameterized via CERTAINLY_VERSION and defaults to
+# "latest". Pin a specific version in production, e.g.:
+#
+#     CERTAINLY_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
+#
+# or set it (with any other CERTAINLY_* settings) in a .env file next to this
+# one. Scale scanning throughput with more workers:
+#
+#     docker compose -f docker-compose.prod.yml up -d --scale worker=3
+
+name: certainly
+
+x-image: &image ghcr.io/zollo/certainly:${CERTAINLY_VERSION:-latest}
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Persist the job/result store so cached scans survive a restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: *image
+    # Always pull so `latest` (or a re-pushed tag) is refreshed on `up`.
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "${CERTAINLY_PORT:-8000}:8000"
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # The image has Python but not curl; use urllib for the probe.
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import sys, urllib.request;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  worker:
+    image: *image
+    pull_policy: always
+    restart: unless-stopped
+    command: ["python", "-m", "certainly.worker"]
+    environment:
+      CERTAINLY_REDIS_URL: redis://redis:6379/0
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis-data:

@@ -46,9 +46,30 @@ docker pull ghcr.io/zollo/certainly:latest
 ```
 
 Tags include `latest` (main), `main`, a short commit SHA, and — for release
-tags like `v1.2.3` — the matching `1.2.3` and `1.2` versions. Point the
-`image:` field of both the `api` and `worker` services at the published image
-to run without a local build.
+tags like `v1.2.3` — the matching `1.2.3` and `1.2` versions.
+
+## Production deployment
+
+Use `docker-compose.prod.yml`, which pulls the pre-built image instead of
+building from source. It only needs this file (and optionally a `.env`) on the
+host:
+
+```bash
+# Run the latest published image
+docker compose -f docker-compose.prod.yml up -d
+
+# Pin a specific version
+CERTAINLY_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
+
+# Scale scanning throughput with more workers
+docker compose -f docker-compose.prod.yml up -d --scale worker=3
+```
+
+The image version is controlled by `CERTAINLY_VERSION` (default `latest`); set
+it inline or in a `.env` file alongside any other `CERTAINLY_*` settings and
+`CERTAINLY_PORT`. Compared to the build-based `docker-compose.yml`, the
+production file also enables Redis persistence (so cached results and job
+records survive restarts) and adds container health checks.
 
 ## Quick start (local, no Docker)
 
