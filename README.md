@@ -13,6 +13,8 @@ one from **0–100** based on its SSL/TLS security posture.
 - 🧮 **Scored** — a weighted score (protocol support, key exchange, cipher
   strength, certificate) plus a convenience letter grade (A+ … F).
 - 🗃️ **Cached** — results are cached (default 24h, configurable) in Redis.
+- 🔗 **Shareable** — optionally save a scan and share it via a public link that
+  expires automatically (default 24h). Off by default.
 - 📦 **Container-native** — `docker compose up` and you're running. All config
   via environment variables or a `.env` file.
 
@@ -137,6 +139,18 @@ Request body:
 | -------------- | ---------- | ------- | ---------------------------------------------- |
 | `targets`      | `string[]` | —       | Hostnames or URLs (`example.com`, `host:8443`, `https://…`). |
 | `bypass_cache` | `boolean`  | `false` | Force a fresh scan, ignoring cached results.   |
+| `share`        | `boolean`  | `false` | Save the result and expose it at a public share URL (expires after the configured TTL). |
+
+When `share` is `true` (and sharing is enabled), the response also includes a
+`share_id` and a `share_url` (e.g. `http://localhost:8000/s/<id>`) that anyone
+can open until it expires.
+
+### `GET /api/shares/{share_id}`
+
+The publicly shared result for a scan submitted with `share: true`. Same shape
+as `GET /api/jobs/{job_id}`, plus `share_expires_at`. Returns `404` once the
+share expires (or if sharing is disabled). The web UI renders this read-only at
+`/s/{share_id}`.
 
 ### `GET /api/jobs/{job_id}/status`
 
@@ -156,8 +170,8 @@ findings. See the interactive docs at **`/docs`** for the complete schema.
 
 ### `GET /api/config`
 
-Returns UI-relevant limits (`max_targets_per_request`, `cache_ttl_seconds`,
-`default_port`).
+Returns UI-relevant limits and flags (`max_targets_per_request`,
+`cache_ttl_seconds`, `default_port`, `enable_sharing`, `share_ttl_seconds`).
 
 ### `GET /api/health`
 
@@ -200,6 +214,8 @@ file. See [`.env.example`](.env.example) for the full list. The most common:
 | ------------------------------------ | -------------------------- | -------------------------------------------- |
 | `CERTAINLY_MAX_TARGETS_PER_REQUEST`  | `10`                       | Max targets per scan request.                |
 | `CERTAINLY_CACHE_TTL_SECONDS`        | `86400` (24h)              | How long results are cached (0 disables).    |
+| `CERTAINLY_ENABLE_SHARING`           | `true`                     | Allow saving/sharing results via public URL. |
+| `CERTAINLY_SHARE_TTL_SECONDS`        | `86400` (24h)              | How long a shared result stays available.    |
 | `CERTAINLY_SCAN_CONCURRENCY`         | `10`                       | Hosts scanned in parallel per job.           |
 | `CERTAINLY_PROBE_CONCURRENCY`        | `12`                       | Parallel probes per host.                    |
 | `CERTAINLY_CONNECT_TIMEOUT`          | `8`                        | Socket timeout (seconds).                    |

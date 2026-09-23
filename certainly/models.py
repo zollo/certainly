@@ -30,6 +30,13 @@ class ScanRequest(BaseModel):
         default=False,
         description="Force a fresh scan even if a cached result exists.",
     )
+    share: bool = Field(
+        default=False,
+        description=(
+            "Save the results and make them publicly shareable via a unique URL. "
+            "Disabled by default; shared results expire after a configured TTL."
+        ),
+    )
 
 
 class SubmitResponse(BaseModel):
@@ -40,6 +47,8 @@ class SubmitResponse(BaseModel):
     targets: list[str]
     status_url: str
     result_url: str
+    share_id: Optional[str] = None
+    share_url: Optional[str] = None
 
 
 class ProtocolResult(BaseModel):
@@ -143,3 +152,7 @@ class JobResult(BaseModel):
     targets: list[str]
     results: list[HostResult] = Field(default_factory=list)
     error: Optional[str] = None
+
+    # Public sharing: set when the scan opted into a shareable public URL.
+    share_id: Optional[str] = None
+    share_expires_at: Optional[datetime] = None
