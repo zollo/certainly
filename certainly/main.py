@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .jobs import QueueUnavailableError, get_job, submit_scan
+from .jobs import QueueUnavailableError, get_job, get_share, submit_scan
 from .models import JobStatus, ScanRequest, SubmitResponse
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
@@ -45,6 +45,8 @@ def config() -> dict:
         "max_targets_per_request": settings.max_targets_per_request,
         "cache_ttl_seconds": settings.cache_ttl_seconds,
         "default_port": settings.default_port,
+        "enable_sharing": settings.enable_sharing,
+        "share_ttl_seconds": settings.share_ttl_seconds,
     }
 
 
@@ -62,18 +64,31 @@ def create_scan(request: ScanRequest, http_request: Request) -> SubmitResponse:
             detail=f"Too many targets: {len(targets)} provided, maximum is {limit}.",
         )
 
+    if request.share and not settings.enable_sharing:
+        raise HTTPException(
+            status_code=403, detail="Public sharing is disabled on this server."
+        )
+
     try:
-        job = submit_scan(targets, bypass_cache=request.bypass_cache, settings=settings)
+        job = submit_scan(
+            targets,
+            bypass_cache=request.bypass_cache,
+            share=request.share,
+            settings=settings,
+        )
     except QueueUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
     base = str(http_request.base_url).rstrip("/")
+    share_url = f"{base}/s/{job.share_id}" if job.share_id else None
     return SubmitResponse(
         job_id=job.job_id,
         status=job.status,
         targets=job.targets,
         status_url=f"{base}/api/jobs/{job.job_id}/status",
         result_url=f"{base}/api/jobs/{job.job_id}",
+        share_id=job.share_id,
+        share_url=share_url,
     )
 
 
@@ -83,6 +98,19 @@ def read_job(job_id: str):
     job = get_job(job_id, settings=settings)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
+    return job
+
+
+@app.get("/api/shares/{share_id}", tags=["share"])
+def read_share(share_id: str):
+    """Return a publicly shared result (no auth). 404 once it expires."""
+    if not settings.enable_sharing:
+        raise HTTPException(status_code=404, detail="Sharing is disabled.")
+    job = get_share(share_id, settings=settings)
+    if job is None:
+        raise HTTPException(
+            status_code=404, detail="Shared result not found or expired."
+        )
     return job
 
 
@@ -112,4 +140,10 @@ if STATIC_DIR.exists():
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
+        return FileResponse(str(STATIC_DIR / "index.html"))
+
+    @app.get("/s/{share_id}", include_in_schema=False)
+    def share_page(share_id: str) -> FileResponse:
+        # Same single-page app; the client detects the /s/ path and renders
+        # the shared result read-only by fetching /api/shares/{id}.
         return FileResponse(str(STATIC_DIR / "index.html"))

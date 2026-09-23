@@ -1,8 +1,17 @@
 "use strict";
 
-const state = { maxTargets: 10, polling: null };
+const state = { maxTargets: 10, polling: null, shareTtl: 86400, shareUrl: null };
 
 const el = (id) => document.getElementById(id);
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return "";
+  const hours = Math.round(seconds / 3600);
+  if (hours >= 48) return `${Math.round(hours / 24)} days`;
+  if (hours >= 1) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const mins = Math.round(seconds / 60);
+  return `${mins} minute${mins === 1 ? "" : "s"}`;
+}
 
 async function loadConfig() {
   try {
@@ -10,6 +19,12 @@ async function loadConfig() {
     const cfg = await res.json();
     state.maxTargets = cfg.max_targets_per_request;
     el("limit-hint").textContent = `(one per line, up to ${state.maxTargets})`;
+    if (cfg.enable_sharing) {
+      state.shareTtl = cfg.share_ttl_seconds || state.shareTtl;
+      el("share-label").textContent =
+        `Save & share results publicly via a link (expires in ${formatDuration(state.shareTtl)})`;
+      el("share-option").hidden = false;
+    }
   } catch (_e) {
     el("limit-hint").textContent = "(one per line)";
   }
@@ -47,15 +62,22 @@ async function startScan() {
   }
 
   el("results").innerHTML = "";
+  el("share-banner").hidden = true;
+  state.shareUrl = null;
   setBusy(true);
   el("status-text").textContent = "Submitting…";
 
+  const share = el("share-results").checked;
   let submit;
   try {
     const res = await fetch("/api/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targets, bypass_cache: el("bypass-cache").checked }),
+      body: JSON.stringify({
+        targets,
+        bypass_cache: el("bypass-cache").checked,
+        share,
+      }),
     });
     submit = await res.json();
     if (!res.ok) {
@@ -67,7 +89,17 @@ async function startScan() {
     return;
   }
 
+  // Remember the share link so it can be revealed once results are ready.
+  state.shareUrl = submit.share_url || null;
   pollJob(submit.job_id);
+}
+
+function showShareBanner(url) {
+  if (!url) return;
+  el("share-url").value = url;
+  el("share-expiry").textContent =
+    `Anyone with this link can view these results for the next ${formatDuration(state.shareTtl)}.`;
+  el("share-banner").hidden = false;
 }
 
 function pollJob(jobId) {
@@ -90,6 +122,9 @@ function pollJob(jobId) {
         const job = await jobRes.json();
         setBusy(false);
         renderResults(job);
+        if (status.status === "finished" && state.shareUrl) {
+          showShareBanner(state.shareUrl);
+        }
         return;
       }
     } catch (_e) {
@@ -348,8 +383,70 @@ function renderCiphers(ciphers) {
   return table;
 }
 
-el("scan-btn").addEventListener("click", startScan);
-el("targets").addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") startScan();
-});
-loadConfig();
+// --- Shared-result view (public /s/{id} page) ---------------------------
+async function loadSharedResult(shareId) {
+  // Read-only mode: hide the scan form and show the shared results.
+  el("intro").hidden = true;
+  document.querySelector(".scan-form").hidden = true;
+  setBusy(true);
+  el("status-text").textContent = "Loading shared results…";
+  try {
+    const res = await fetch(`/api/shares/${encodeURIComponent(shareId)}`);
+    const job = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      showError(job.detail || "This shared result was not found or has expired.");
+      return;
+    }
+    const banner = el("shared-note");
+    if (banner) {
+      let note = "Shared results";
+      if (job.share_expires_at) {
+        note += ` — expire ${new Date(job.share_expires_at).toLocaleString()}`;
+      }
+      banner.textContent = note;
+      banner.hidden = false;
+    }
+    renderResults(job);
+  } catch (_e) {
+    setBusy(false);
+    showError("Could not load the shared result.");
+  }
+}
+
+function copyShareUrl() {
+  const input = el("share-url");
+  input.select();
+  const done = () => {
+    const btn = el("share-copy");
+    const prev = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => (btn.textContent = prev), 1500);
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(input.value).then(done, () => {
+      document.execCommand("copy");
+      done();
+    });
+  } else {
+    document.execCommand("copy");
+    done();
+  }
+}
+
+function init() {
+  el("scan-btn").addEventListener("click", startScan);
+  el("targets").addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") startScan();
+  });
+  el("share-copy").addEventListener("click", copyShareUrl);
+
+  const match = window.location.pathname.match(/^\/s\/([^/]+)/);
+  if (match) {
+    loadSharedResult(decodeURIComponent(match[1]));
+  } else {
+    loadConfig();
+  }
+}
+
+init();

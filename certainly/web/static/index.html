@@ -22,7 +22,9 @@
   </header>
 
   <main class="container">
-    <section class="intro">
+    <section id="shared-note" class="shared-note" hidden></section>
+
+    <section id="intro" class="intro">
       <h2>Inspect the SSL/TLS posture of any server</h2>
       <p>
         Enter one or more hostnames or URLs. Certainly probes each server's
@@ -41,11 +43,18 @@
         rows="5"
         spellcheck="false"
       ></textarea>
-      <div class="form-row">
+      <div class="form-options">
         <label class="checkbox">
           <input type="checkbox" id="bypass-cache" />
           <span>Bypass cache (force fresh scan)</span>
         </label>
+        <label class="checkbox" id="share-option" hidden>
+          <input type="checkbox" id="share-results" />
+          <span id="share-label">Save &amp; share results publicly via a link</span>
+        </label>
+      </div>
+      <div class="form-row">
+        <span class="form-spacer"></span>
         <button id="scan-btn" class="btn-primary">Analyze</button>
       </div>
       <p id="form-error" class="form-error" hidden></p>
@@ -54,6 +63,20 @@
     <section id="status-panel" class="status-panel" hidden>
       <div class="spinner"></div>
       <span id="status-text">Queued…</span>
+    </section>
+
+    <section id="share-banner" class="share-banner" hidden>
+      <div class="share-banner-body">
+        <span class="share-icon">🔗</span>
+        <div class="share-text">
+          <strong>Public share link</strong>
+          <span id="share-expiry" class="share-expiry"></span>
+          <div class="share-link-row">
+            <input id="share-url" class="share-url" type="text" readonly />
+            <button id="share-copy" class="btn-copy" type="button">Copy</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section id="results" class="results"></section>

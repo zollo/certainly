@@ -13,8 +13,10 @@ in-process dictionary is used instead.
 """
 from __future__ import annotations
 
+import secrets
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .cache import ResultCache
@@ -23,9 +25,12 @@ from .models import JobResult, JobStatus
 from .scanner import analyze_targets, parse_target
 
 _JOB_PREFIX = "certainly:job:"
+_SHARE_PREFIX = "certainly:share:"
 
-# In-process fallback store (used when Redis is not configured/available).
+# In-process fallback stores (used when Redis is not configured/available).
 _MEMORY_JOBS: dict[str, str] = {}
+# Shares map id -> (expiry_epoch_seconds, payload_json).
+_MEMORY_SHARES: dict[str, tuple[float, str]] = {}
 
 
 class QueueUnavailableError(RuntimeError):
@@ -109,15 +114,70 @@ def _store_for(settings: Settings) -> JobStore:
     return JobStore(get_redis(settings), settings.job_result_ttl_seconds)
 
 
+class ShareStore:
+    """Persistence for publicly shared results.
+
+    A share is a finished :class:`JobResult` stored under an unguessable token
+    with a TTL, so it disappears automatically after it expires. Uses Redis
+    when available, with an in-process fallback (with manual expiry) otherwise.
+    """
+
+    def __init__(self, redis_client, ttl_seconds: int):
+        self._redis = redis_client
+        self._ttl = ttl_seconds
+
+    @staticmethod
+    def _key(share_id: str) -> str:
+        return f"{_SHARE_PREFIX}{share_id}"
+
+    def save(self, share_id: str, job: JobResult) -> None:
+        payload = job.model_dump_json()
+        if self._redis is not None:
+            try:
+                self._redis.set(self._key(share_id), payload, ex=self._ttl)
+                return
+            except Exception:
+                pass
+        _MEMORY_SHARES[share_id] = (time.time() + self._ttl, payload)
+
+    def get(self, share_id: str) -> Optional[JobResult]:
+        payload = None
+        if self._redis is not None:
+            try:
+                payload = self._redis.get(self._key(share_id))
+            except Exception:
+                payload = None
+        if payload is None:
+            entry = _MEMORY_SHARES.get(share_id)
+            if entry is not None:
+                expiry, stored = entry
+                if time.time() >= expiry:
+                    _MEMORY_SHARES.pop(share_id, None)  # lazily evict expired
+                else:
+                    payload = stored
+        if payload is None:
+            return None
+        try:
+            return JobResult.model_validate_json(payload)
+        except Exception:
+            return None
+
+
+def _share_store_for(settings: Settings) -> ShareStore:
+    return ShareStore(get_redis(settings), settings.share_ttl_seconds)
+
+
 # --------------------------------------------------------------------------- #
 # Public API used by the web layer
 # --------------------------------------------------------------------------- #
-def submit_scan(targets: list[str], bypass_cache: bool,
+def submit_scan(targets: list[str], bypass_cache: bool, share: bool = False,
                 settings: Optional[Settings] = None) -> JobResult:
     """Create a job for ``targets`` and enqueue (or run) it.
 
     Returns the initial :class:`JobResult` (status ``queued``). The heavy work
-    happens later on a worker unless inline mode is enabled.
+    happens later on a worker unless inline mode is enabled. When ``share`` is
+    requested (and sharing is enabled), a share token is minted now and the
+    finished result is persisted publicly when the job completes.
     """
     settings = settings or get_settings()
     store = _store_for(settings)
@@ -128,6 +188,11 @@ def submit_scan(targets: list[str], bypass_cache: bool,
         submitted_at=datetime.now(timezone.utc),
         targets=targets,
     )
+    if share and settings.enable_sharing:
+        job.share_id = secrets.token_urlsafe(16)
+        job.share_expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=settings.share_ttl_seconds)
+        )
     store.save(job)
 
     if settings.use_inline_worker:
@@ -154,6 +219,12 @@ def submit_scan(targets: list[str], bypass_cache: bool,
         job_timeout=settings.job_timeout_seconds,
     )
     return job
+
+
+def get_share(share_id: str, settings: Optional[Settings] = None) -> Optional[JobResult]:
+    """Return a publicly shared result by token, or ``None`` if expired/absent."""
+    settings = settings or get_settings()
+    return _share_store_for(settings).get(share_id)
 
 
 def get_job(job_id: str, settings: Optional[Settings] = None) -> Optional[JobResult]:
@@ -189,6 +260,10 @@ def execute_job(job_id: str, targets: list[str], bypass_cache: bool) -> None:
     finally:
         job.finished_at = datetime.now(timezone.utc)
         store.save(job)
+
+    # Publish the shareable copy once the scan has finished successfully.
+    if job.status == JobStatus.FINISHED and job.share_id and settings.enable_sharing:
+        _share_store_for(settings).save(job.share_id, job)
 
 
 def _scan_with_cache(targets: list[str], bypass_cache: bool,

@@ -76,6 +76,20 @@ class Settings(BaseSettings):
         description="How long (seconds) a host result is cached. 0 disables caching.",
     )
 
+    # --- Public sharing ----------------------------------------------------
+    enable_sharing: bool = Field(
+        default=True,
+        description=(
+            "Allow scans to be saved and shared publicly via a unique URL. "
+            "When false, the share option is rejected and hidden in the UI."
+        ),
+    )
+    share_ttl_seconds: int = Field(
+        default=24 * 60 * 60,
+        ge=60,
+        description="How long (seconds) a shared result stays available before it expires.",
+    )
+
     # --- Job queue / storage ----------------------------------------------
     redis_url: str = Field(
         default="redis://localhost:6379/0",
