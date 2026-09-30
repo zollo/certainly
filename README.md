@@ -47,8 +47,11 @@ GitHub Container Registry via CI. Pull it directly instead of building:
 docker pull ghcr.io/zollo/certainly:latest
 ```
 
-Tags include `latest` (main), `main`, a short commit SHA, and — for release
-tags like `v1.2.3` — the matching `1.2.3` and `1.2` versions.
+Every push to `main` cuts a new release (see [Releases & versioning](#releases--versioning)),
+so each published image is tagged `latest`, the exact version `X.Y.Z`, the
+`X.Y` line, and a short commit SHA. Pin `X.Y.Z` for reproducible deploys,
+`X.Y` to float within a minor line, or `latest` for the newest. Images are
+cosign-signed and carry a build-provenance attestation.
 
 ## Production deployment
 
@@ -261,6 +264,31 @@ pytest
 
 The test suite runs fully offline (scoring, target parsing, cipher
 classification, and the API in inline mode) — no network access required.
+
+## Releases & versioning
+
+Certainly uses [Semantic Versioning](https://semver.org/) driven by
+[Conventional Commits](https://www.conventionalcommits.org/), automated in CI
+(`.github/workflows/release.yml`):
+
+- **Contribute via PRs with Conventional Commit titles.** A `PR Title` check
+  (`.github/workflows/pr-title.yml`) enforces the format, e.g.
+  `feat: add X`, `fix: correct Y`, `docs: …`, `ci: …`. The repo squash-merges
+  with the **PR title as the commit subject**, so the title determines the
+  version bump.
+- **On every merge to `main`**, CI computes the next version from the commits
+  since the last tag — `feat:` → minor, `fix:` → patch, `BREAKING CHANGE:` (or
+  `type!:`) → major, otherwise patch — then tags it, publishes a **GitHub
+  Release** with auto-generated notes, and builds/pushes the signed image.
+- The **first** release is seeded at `v1.0.0`.
+
+> Repo setting to enable: **Settings → General → Pull Requests → Allow squash
+> merging**, with **“Default to pull request title”** for the squash commit
+> message. That makes the enforced PR title the commit subject the versioner
+> reads. (This mirrors `zollo/azuregos`.)
+
+Commit types accepted in PR titles: `feat`, `fix`, `docs`, `chore`, `ci`,
+`build`, `refactor`, `perf`, `test`, `style`, `revert`.
 
 ---
 

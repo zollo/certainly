@@ -1,0 +1,183 @@
+name: Release
+
+# Semantic-versioning release pipeline (aligned with zollo/azuregos):
+#   * Conventional Commits drive the version bump (see pr-title.yml, which
+#     enforces Conventional Commit PR titles — the repo squash-merges with the
+#     PR title as the commit subject, so the title is what versioning reads).
+#   * On every push to main the version is computed, a GitHub Release is cut,
+#     and a signed, multi-arch image is published to GHCR.
+#   * On pull requests the tests run and the image is built (not pushed) to
+#     catch Dockerfile breakage early.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege by default; jobs opt into more as needed.
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest -q
+
+  build-check:
+    name: Build image (PR check)
+    needs: test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Version & release on merges to main. The first release is seeded at v1.0.0;
+  # afterwards the next version is computed from commit history (Conventional
+  # Commits: feat: -> minor, fix: -> patch, BREAKING CHANGE -> major; default
+  # patch).
+  version:
+    name: Version & tag
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.final.outputs.version }}
+      tag: ${{ steps.final.outputs.tag }}
+      major_minor: ${{ steps.final.outputs.major_minor }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for existing version tags
+        id: check
+        run: |
+          if [ -z "$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*')" ]; then
+            echo "seed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "seed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Seed initial version (v1.0.0)
+        if: steps.check.outputs.seed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.0.0 -m "Release v1.0.0"
+          git push origin v1.0.0
+      - name: Determine next version
+        id: tag
+        if: steps.check.outputs.seed == 'false'
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+      - name: Resolve version outputs
+        id: final
+        run: |
+          if [ "${{ steps.check.outputs.seed }}" = "true" ]; then
+            VERSION=1.0.0
+            TAG=v1.0.0
+          else
+            VERSION='${{ steps.tag.outputs.new_version }}'
+            TAG='${{ steps.tag.outputs.new_tag }}'
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$(echo "$VERSION" | cut -d. -f1-2)" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub release
+        if: steps.final.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.final.outputs.tag }}
+          name: ${{ steps.final.outputs.tag }}
+          generate_release_notes: true
+
+  images:
+    name: Build, sign & publish image
+    needs: [version]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # push images to GHCR
+      id-token: write        # keyless cosign signing + attestation (OIDC)
+      attestations: write    # store build provenance attestation
+      actions: write         # allow the type=gha build cache to read/write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.major_minor }}
+            type=sha,format=short
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Sign image (keyless)
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
