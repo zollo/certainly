@@ -26,7 +26,6 @@ PQC_OIDS = {
     "1.3.9999.3.6",             # Falcon-512 (pre-standardisation)
     "1.3.9999.6.4.16",          # SPHINCS+ (pre-standardisation)
 }
-_CLASSICAL_KEY_TYPES = ("RSA", "EC", "DSA", "Ed25519", "Ed448")
 
 
 def _name_to_str(name: x509.Name) -> str:
@@ -162,16 +161,24 @@ def _sct_count(cert: x509.Certificate) -> int:
         return 0
 
 
-def _is_post_quantum(cert: x509.Certificate, key_type: str) -> bool:
+def _is_post_quantum(cert: x509.Certificate) -> bool:
+    """Return True only for explicitly recognised post-quantum algorithms.
+
+    An unrecognised key class is NOT treated as post-quantum: classical
+    key-agreement types (X25519, X448, DH) are also "unknown" to the signature
+    classifier, so guessing from absence would misreport them.
+    """
+    oids = set()
     try:
-        sig_oid = cert.signature_algorithm_oid.dotted_string
+        oids.add(cert.signature_algorithm_oid.dotted_string)
     except Exception:  # pragma: no cover - defensive
-        sig_oid = ""
-    if sig_oid in PQC_OIDS:
-        return True
-    # A key type cryptography could not classify as a classical family is
-    # treated as post-quantum (it falls through _key_details to a class name).
-    return not key_type.startswith(_CLASSICAL_KEY_TYPES)
+        pass
+    try:
+        spki_oid = cert.public_key_algorithm_oid.dotted_string  # cryptography >= 43
+        oids.add(spki_oid)
+    except Exception:  # pragma: no cover - older cryptography / unusual keys
+        pass
+    return bool(oids & PQC_OIDS)
 
 
 def parse_certificate(cert_der: bytes, hostname: str) -> CertificateInfo:
@@ -210,7 +217,7 @@ def parse_certificate(cert_der: bytes, hostname: str) -> CertificateInfo:
         crl_urls=_crl_urls(cert),
         must_staple=_must_staple(cert),
         sct_count=_sct_count(cert),
-        is_post_quantum=_is_post_quantum(cert, key_type),
+        is_post_quantum=_is_post_quantum(cert),
     )
 
 

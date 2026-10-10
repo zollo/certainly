@@ -196,20 +196,10 @@ def _certificate_component(result: HostResult, findings: list[Finding]) -> tuple
         ))
         score = min(score, 60)
 
-    # --- Revocation status & information ---
-    if cert.ocsp_status == "revoked":
-        findings.append(_severity_finding(
-            "critical", "Certificate revoked",
-            "The OCSP responder reports this certificate as revoked.",
-        ))
-        valid = False
-        score = 0
-    elif cert.ocsp_status == "good":
-        findings.append(_severity_finding(
-            "good", "Not revoked",
-            "The OCSP responder reports the certificate as good.",
-        ))
-
+    # --- Revocation information (published by the certificate) ---
+    # We report the endpoints the certificate advertises. We do not perform an
+    # unauthenticated live OCSP query (which would be MITM-forgeable over plain
+    # HTTP and an SSRF vector), so no revocation *status* gates the grade here.
     if cert.ocsp_urls or cert.crl_urls:
         parts = []
         if cert.ocsp_urls:
@@ -243,20 +233,26 @@ def _certificate_component(result: HostResult, findings: list[Finding]) -> tuple
             "No Certificate Transparency timestamps are embedded in the certificate.",
         ))
 
-    # --- Post-quantum cryptography analysis ---
-    if cert.is_post_quantum:
+    # --- Post-quantum cryptography analysis (certificate algorithms only) ---
+    # This reflects the certificate's signature/key algorithm, not the
+    # connection's key exchange. Whether traffic resists "harvest-now,
+    # decrypt-later" depends on the negotiated key-exchange group, which this
+    # scanner does not yet probe — so this is informational either way.
+    if cert.is_post_quantum is True:
         findings.append(_severity_finding(
-            "good", "Post-quantum ready",
-            f"The certificate uses a post-quantum algorithm ({cert.signature_algorithm}).",
+            "info", "Post-quantum certificate algorithm",
+            f"The certificate uses a post-quantum algorithm ({cert.signature_algorithm}). "
+            "Note: connection-level quantum resistance also depends on the "
+            "negotiated key-exchange group, which is not probed here.",
         ))
-    else:
+    elif cert.is_post_quantum is False:
         findings.append(_severity_finding(
-            "info", "No post-quantum cryptography",
-            f"Classical algorithms are in use ({cert.key_type}, "
-            f"{cert.signature_algorithm}); these are not resistant to quantum "
-            "attack. Traffic captured today could be decrypted once large quantum "
-            "computers exist (harvest-now, decrypt-later). Consider a hybrid "
-            "post-quantum key exchange (e.g. X25519MLKEM768) when available.",
+            "info", "Classical certificate algorithms",
+            f"The certificate uses classical algorithms ({cert.key_type}, "
+            f"{cert.signature_algorithm}), which are not quantum-resistant. "
+            "Connection-level resistance to 'harvest-now, decrypt-later' also "
+            "depends on the negotiated key exchange (e.g. a hybrid such as "
+            "X25519MLKEM768), which this scanner does not yet probe.",
         ))
 
     if valid:
@@ -348,19 +344,21 @@ def score_host(result: HostResult) -> None:
             "HTTP Strict Transport Security is not enabled.",
         ))
 
-    # DNS CAA (Certification Authority Authorization).
+    # DNS CAA (Certification Authority Authorization). Report neutrally: an
+    # RRset may contain only iodef (reporting) records and authorise no CA, so
+    # we don't claim issuance is "restricted".
     if result.caa_checked:
         if result.caa_records:
             findings.append(_severity_finding(
-                "good", "DNS CAA configured",
-                f"{len(result.caa_records)} CAA record(s) restrict which CAs may "
-                "issue certificates for this domain.",
+                "good", "DNS CAA records published",
+                f"{len(result.caa_records)} CAA record(s) are published for this "
+                "name: " + "; ".join(result.caa_records[:5]) + ".",
             ))
         else:
             findings.append(_severity_finding(
                 "info", "No DNS CAA records",
-                "No CAA records are published; any CA may issue certificates for "
-                "this domain.",
+                "No CAA records are published at this name, so CAA does not "
+                "constrain certificate issuance for it.",
             ))
 
     if not cert_valid:

@@ -186,7 +186,9 @@ textarea:focus { outline: none; border-color: var(--accent); }
 /* Findings — responsive masonry-ish grid to use horizontal space well. */
 .findings {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* min() lets the track shrink below 320px on narrow screens instead of
+     overflowing the (overflow-hidden) result card and clipping content. */
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 10px;
   align-items: start;
 }

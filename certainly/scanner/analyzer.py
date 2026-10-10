@@ -15,7 +15,6 @@ from . import tls
 from .caa import DEFAULT_DOH_URL, lookup_caa
 from .certificate import parse_certificate
 from .http_checks import check_hsts
-from .revocation import check_ocsp
 from .scoring import score_host
 from .tls import SECURE_PROTOCOLS
 
@@ -61,8 +60,7 @@ def parse_target(raw: str, default_port: int) -> ParsedTarget:
 
 
 def analyze_target(raw: str, default_port: int, timeout: float,
-                   probe_workers: int, check_revocation: bool = True,
-                   check_caa: bool = True,
+                   probe_workers: int, check_caa: bool = True,
                    doh_url: str = DEFAULT_DOH_URL) -> HostResult:
     """Run the complete analysis pipeline for a single target."""
     start = time.monotonic()
@@ -127,20 +125,6 @@ def analyze_target(raw: str, default_port: int, timeout: float,
         except Exception:  # pragma: no cover
             continue
 
-    # Revocation status (active OCSP query). Needs the issuer, which is the
-    # second certificate in the chain when the server sent one.
-    if result.certificate is not None:
-        if (check_revocation and result.certificate.ocsp_urls
-                and len(outcome.chain_der) >= 2):
-            result.certificate.ocsp_status = check_ocsp(
-                outcome.leaf_cert_der,
-                outcome.chain_der[1],
-                result.certificate.ocsp_urls[0],
-                timeout,
-            )
-        else:
-            result.certificate.ocsp_status = "not_checked"
-
     # DNS CAA for the hostname (DNS-over-HTTPS, best-effort).
     if check_caa:
         caa = lookup_caa(target.hostname, timeout, doh_url)
@@ -159,7 +143,6 @@ def analyze_target(raw: str, default_port: int, timeout: float,
 
 def analyze_targets(raws: list[str], default_port: int, timeout: float,
                     concurrency: int, probe_workers: int,
-                    check_revocation: bool = True,
                     check_caa: bool = True,
                     doh_url: str = DEFAULT_DOH_URL) -> list[HostResult]:
     """Analyze many targets in parallel, preserving input order."""
@@ -169,7 +152,7 @@ def analyze_targets(raws: list[str], default_port: int, timeout: float,
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         future_to_index = {
             pool.submit(analyze_target, raw, default_port, timeout, probe_workers,
-                        check_revocation, check_caa, doh_url): i
+                        check_caa, doh_url): i
             for i, raw in enumerate(raws)
         }
         # Consume as each host finishes so a slow host doesn't hold up writing

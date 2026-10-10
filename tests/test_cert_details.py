@@ -7,9 +7,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import AuthorityInformationAccessOID, NameOID
 
 from certainly.models import CertificateInfo, CipherResult, HostResult, ProtocolResult
-from certainly.scanner.caa import _candidate_names
+from certainly.scanner import caa as caa_module
+from certainly.scanner.caa import lookup_caa
 from certainly.scanner.certificate import parse_certificate
-from certainly.scanner.revocation import check_ocsp
 from certainly.scanner.scoring import score_host
 
 
@@ -64,7 +64,7 @@ def test_parse_certificate_extensions():
     assert info.crl_urls == ["http://crl.example.com/a.crl"]
     assert info.must_staple is True
     assert info.sct_count == 0  # no SCTs synthesised
-    assert info.is_post_quantum is False  # RSA is classical
+    assert info.is_post_quantum is False  # RSA is classical, explicitly assessed
     assert info.hostname_matches is True
 
 
@@ -77,19 +77,41 @@ def test_parse_certificate_without_optional_extensions():
     assert info.must_staple is False
 
 
-# --------------------------------------------------------------------------- #
-# CAA + OCSP helpers
-# --------------------------------------------------------------------------- #
-def test_caa_candidate_names_climbs_to_registrable_domain():
-    assert _candidate_names("a.b.example.com") == [
-        "a.b.example.com", "b.example.com", "example.com"
-    ]
-    assert _candidate_names("example.com") == ["example.com"]
+def test_rsa_certificate_is_not_post_quantum():
+    # An ordinary classical key must never be flagged as post-quantum.
+    assert parse_certificate(_make_cert_der(), "example.com").is_post_quantum is False
 
 
-def test_check_ocsp_unavailable_without_issuer_or_url():
-    assert check_ocsp(b"leaf", None, "http://ocsp", 1.0) == "unavailable"
-    assert check_ocsp(b"leaf", b"issuer", "", 1.0) == "unavailable"
+# --------------------------------------------------------------------------- #
+# CAA lookup (DoH parsing, no real network)
+# --------------------------------------------------------------------------- #
+class _FakeResp:
+    def __init__(self, body):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_caa_lookup_parses_records(monkeypatch):
+    body = b'{"Answer":[{"type":257,"data":"0 issue \\"letsencrypt.org\\""},' \
+           b'{"type":257,"data":"0 iodef \\"mailto:a@example.com\\""}]}'
+    monkeypatch.setattr(caa_module.urllib.request, "urlopen", lambda *a, **k: _FakeResp(body))
+    records = lookup_caa("example.com", 2.0)
+    assert records == ['0 issue "letsencrypt.org"', '0 iodef "mailto:a@example.com"']
+
+
+def test_caa_lookup_error_returns_none(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("blocked")
+    monkeypatch.setattr(caa_module.urllib.request, "urlopen", boom)
+    assert lookup_caa("example.com", 2.0) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -104,7 +126,7 @@ def _host_with_cert(**cert_overrides) -> HostResult:
         is_expired=False, is_not_yet_valid=False, is_self_signed=False,
         signature_algorithm="sha256WithRSAEncryption", key_type="RSA", key_bits=2048,
         sha256_fingerprint="AA:BB", version="v3", hostname_matches=True,
-        weak_signature=False,
+        weak_signature=False, is_post_quantum=False,
     )
     cert_kw.update(cert_overrides)
     return HostResult(
@@ -120,42 +142,43 @@ def _host_with_cert(**cert_overrides) -> HostResult:
     )
 
 
-def test_pqc_finding_for_classical_certificate():
+def test_pqc_finding_classical_is_informational():
     host = _host_with_cert(is_post_quantum=False)
     score_host(host)
-    assert "No post-quantum cryptography" in {f.title for f in host.findings}
+    pqc = next(f for f in host.findings if "classical" in f.title.lower())
+    assert pqc.severity == "info"
+    # Must not over-claim connection-level readiness or traffic decryption.
+    assert "ready" not in pqc.title.lower()
 
 
-def test_pqc_finding_good_when_post_quantum():
+def test_pqc_finding_positive_is_informational_not_good():
     host = _host_with_cert(is_post_quantum=True)
     score_host(host)
     pqc = next(f for f in host.findings if "post-quantum" in f.title.lower())
-    assert pqc.severity == "good"
+    assert pqc.severity == "info"
+
+
+def test_pqc_finding_absent_when_not_assessed():
+    host = _host_with_cert(is_post_quantum=None)
+    score_host(host)
+    assert not any("quantum" in f.title.lower() for f in host.findings)
 
 
 def test_ct_and_revocation_findings():
-    host = _host_with_cert(sct_count=3, ocsp_urls=["http://ocsp.x"], ocsp_status="good")
+    host = _host_with_cert(sct_count=3, ocsp_urls=["http://ocsp.x"])
     score_host(host)
     titles = {f.title for f in host.findings}
     assert "Certificate Transparency" in titles
-    assert "Not revoked" in titles
     assert "Revocation information published" in titles
 
 
-def test_revoked_certificate_fails():
-    host = _host_with_cert(ocsp_status="revoked")
-    score_host(host)
-    assert host.grade == "F"
-    assert host.score <= 20
-    assert "Certificate revoked" in {f.title for f in host.findings}
-
-
-def test_caa_findings():
+def test_caa_findings_neutral_wording():
     host = _host_with_cert()
     host.caa_checked = True
     host.caa_records = ['0 issue "letsencrypt.org"']
     score_host(host)
-    assert "DNS CAA configured" in {f.title for f in host.findings}
+    caa = next(f for f in host.findings if "CAA" in f.title)
+    assert caa.title == "DNS CAA records published"
 
     host2 = _host_with_cert()
     host2.caa_checked = True

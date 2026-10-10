@@ -320,14 +320,6 @@ function renderFindings(findings) {
   return wrap;
 }
 
-const OCSP_STATUS_TEXT = {
-  good: "Good (not revoked)",
-  revoked: "Revoked",
-  unknown: "Unknown",
-  unavailable: "Responder unavailable",
-  not_checked: "Not checked",
-};
-
 function renderCertificate(c, host) {
   const dl = document.createElement("dl");
   dl.className = "kv";
@@ -355,23 +347,13 @@ function renderCertificate(c, host) {
     : document.createTextNode(c.signature_algorithm));
   add("Self-signed", pill(!c.is_self_signed, "No", "Yes"));
 
-  // --- Revocation information & status ---
-  const revParts = [];
-  if (c.ocsp_status && c.ocsp_status !== "not_checked") {
-    const ok = c.ocsp_status === "good";
-    const bad = c.ocsp_status === "revoked";
-    revParts.push(pill(ok, OCSP_STATUS_TEXT[c.ocsp_status], OCSP_STATUS_TEXT[c.ocsp_status], !ok && !bad));
-  }
+  // --- Revocation information (endpoints published by the certificate) ---
   const endpoints = [];
   if (c.ocsp_urls && c.ocsp_urls.length) endpoints.push("OCSP");
   if (c.crl_urls && c.crl_urls.length) endpoints.push("CRL");
-  const revWrap = document.createElement("div");
-  if (revParts.length) revWrap.appendChild(revParts[0]);
-  const epText = document.createElement("span");
-  epText.className = "kv-note";
-  epText.textContent = endpoints.length ? ` via ${endpoints.join(" + ")}` : " none published";
-  revWrap.appendChild(epText);
-  add("Revocation", revWrap);
+  add("Revocation", endpoints.length
+    ? document.createTextNode(`Published via ${endpoints.join(" + ")}`)
+    : pill(false, "", "None published"));
   if (c.ocsp_urls && c.ocsp_urls.length) add("OCSP responder", c.ocsp_urls[0]);
   if (c.crl_urls && c.crl_urls.length) add("CRL", c.crl_urls[0]);
 
@@ -394,10 +376,12 @@ function renderCertificate(c, host) {
     }
   }
 
-  // --- Post-quantum ---
-  add("Post-quantum", c.is_post_quantum
-    ? pill(true, "Yes", "")
-    : document.createTextNode("No (classical algorithms)"));
+  // --- Post-quantum (certificate algorithm; tri-state) ---
+  if (c.is_post_quantum === true) {
+    add("Post-quantum", pill(true, "Yes (certificate algorithm)", ""));
+  } else if (c.is_post_quantum === false) {
+    add("Post-quantum", document.createTextNode("No (classical algorithms)"));
+  }
 
   add("SHA-256", c.sha256_fingerprint);
   return dl;

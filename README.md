@@ -12,8 +12,8 @@ one from **0–100** based on its SSL/TLS security posture.
   cipher probes run in parallel.
 - 🧮 **Scored** — a weighted score (protocol support, key exchange, cipher
   strength, certificate) plus a convenience letter grade (A+ … F).
-- 🔎 **Deep certificate detail** — serial number, revocation information &
-  status (OCSP/CRL), OCSP Must-Staple, Certificate Transparency (SCTs), and
+- 🔎 **Deep certificate detail** — serial number, revocation information
+  (OCSP/CRL endpoints), OCSP Must-Staple, Certificate Transparency (SCTs), and
   DNS CAA, plus a post-quantum-cryptography (PQC) finding.
 - 🗃️ **Cached** — results are cached (default 24h, configurable) in Redis.
 - 🔗 **Shareable** — optionally save a scan and share it via a public link that
@@ -225,7 +225,6 @@ file. See [`.env.example`](.env.example) for the full list. The most common:
 | `CERTAINLY_SCAN_CONCURRENCY`         | `10`                       | Hosts scanned in parallel per job.           |
 | `CERTAINLY_PROBE_CONCURRENCY`        | `12`                       | Parallel probes per host.                    |
 | `CERTAINLY_CONNECT_TIMEOUT`          | `8`                        | Socket timeout (seconds).                    |
-| `CERTAINLY_CHECK_REVOCATION`         | `true`                     | Active OCSP revocation query per host.       |
 | `CERTAINLY_CHECK_CAA`                | `true`                     | DNS CAA lookup (via DNS-over-HTTPS) per host.|
 | `CERTAINLY_CAA_DOH_URL`              | `https://dns.google/resolve` | DoH JSON resolver used for CAA lookups.    |
 | `CERTAINLY_REDIS_URL`                | `redis://localhost:6379/0` | Redis for queue + cache.                     |

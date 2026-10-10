@@ -104,10 +104,6 @@ class CertificateInfo(BaseModel):
         default=False,
         description="True if the certificate carries the OCSP Must-Staple (TLS feature) extension.",
     )
-    ocsp_status: Optional[str] = Field(
-        default=None,
-        description="Live OCSP revocation status: good, revoked, unknown, unavailable, or not_checked.",
-    )
 
     # --- Certificate Transparency ---
     sct_count: int = Field(
@@ -116,9 +112,11 @@ class CertificateInfo(BaseModel):
     )
 
     # --- Post-quantum cryptography ---
-    is_post_quantum: bool = Field(
-        default=False,
-        description="True if the certificate uses a post-quantum signature/key algorithm.",
+    # Tri-state: True/False once assessed, None for results from before this
+    # was collected (so legacy cached/shared payloads aren't mislabelled).
+    is_post_quantum: Optional[bool] = Field(
+        default=None,
+        description="True if the certificate's signature/key uses a recognised post-quantum algorithm; None if not assessed.",
     )
 
 
