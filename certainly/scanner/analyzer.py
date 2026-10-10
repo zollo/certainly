@@ -15,7 +15,7 @@ from . import tls
 from .caa import DEFAULT_DOH_URL, lookup_caa
 from .certificate import parse_certificate
 from .http_checks import check_hsts
-from .revocation import check_ocsp, fetch_issuer
+from .revocation import check_ocsp, fetch_issuer, select_issuer
 from .scoring import score_host
 from .tls import SECURE_PROTOCOLS
 
@@ -129,10 +129,13 @@ def analyze_target(raw: str, default_port: int, timeout: float,
 
     # Validated live OCSP revocation status (best-effort, fully verified).
     if check_revocation and result.certificate is not None and result.certificate.ocsp_urls:
-        issuer_der = outcome.chain_der[1] if len(outcome.chain_der) >= 2 else None
+        # The probe chain is from an unverified (CERT_NONE) connection, so the
+        # issuer candidate must be proven to have issued the leaf before its key
+        # is trusted for the OCSP CertID and signature.
+        issuer_der = select_issuer(outcome.leaf_cert_der, list(outcome.chain_der[1:]))
         if issuer_der is None and result.certificate.ca_issuer_urls:
-            # Server didn't supply the chain (e.g. older TLS stack) — fetch the
-            # issuer from the AIA caIssuers URL (SSRF-guarded).
+            # Server didn't supply a usable chain (e.g. older TLS stack) — fetch
+            # the issuer from the AIA caIssuers URL (SSRF-guarded + verified).
             issuer_der = fetch_issuer(
                 outcome.leaf_cert_der, result.certificate.ca_issuer_urls, timeout
             )

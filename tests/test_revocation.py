@@ -18,8 +18,11 @@ from certainly.scanner.revocation import (
     _is_public_host,
     _safe_open,
     check_ocsp,
+    select_issuer,
     validate_response,
 )
+
+_SENTINEL = object()
 
 _DER = serialization.Encoding.DER
 
@@ -62,10 +65,12 @@ _LEAF_DER = _leaf.public_bytes(_DER)
 
 
 def _ocsp_response(status, *, signer_key=_issuer_key, responder_cert=_issuer,
-                   embed=None, this_update=None, next_update=None, leaf=_leaf):
+                   embed=None, this_update=None, next_update=_SENTINEL, leaf=_leaf):
     now = datetime.now(timezone.utc)
     this_update = this_update or (now - timedelta(hours=1))
-    next_update = next_update or (now + timedelta(days=1))
+    # next_update defaults to a fresh value; pass None explicitly to omit it.
+    if next_update is _SENTINEL:
+        next_update = now + timedelta(days=1)
     kwargs = dict(
         cert=leaf, issuer=_issuer, algorithm=hashes.SHA256(),
         cert_status=status, this_update=this_update, next_update=next_update,
@@ -157,11 +162,49 @@ def test_garbage_is_unavailable():
     assert validate_response(b"not an ocsp response", _leaf, _issuer) == "unavailable"
 
 
+def test_embedded_issuer_cert_does_not_disable_direct_issuer():
+    # A response legally signed by the issuer may embed the issuer certificate
+    # (which lacks the OCSP-signing EKU). That must not reject a valid response.
+    raw = _ocsp_response(ocsp.OCSPCertStatus.GOOD, embed=[_issuer])
+    assert validate_response(raw, _leaf, _issuer) == "good"
+
+
+def test_missing_next_update_is_unavailable():
+    # Without nextUpdate there is no upper freshness bound — a captured "good"
+    # could be replayed indefinitely, so it must be refused.
+    raw = _ocsp_response(ocsp.OCSPCertStatus.GOOD, next_update=None)
+    assert validate_response(raw, _leaf, _issuer) == "unavailable"
+
+
+# --- issuer validation (the probe chain / AIA bundle is untrusted) ----------
+def test_select_issuer_picks_the_real_issuer():
+    assert select_issuer(_LEAF_DER, [_ISSUER_DER]) == _ISSUER_DER
+
+
+def test_select_issuer_rejects_unrelated_certificate():
+    # An unrelated CA that did not sign the leaf must never be accepted as its
+    # issuer, even though it is a valid CA certificate.
+    other_key = _key()
+    other_ca = _cert(_name("Unrelated CA"), _name("Unrelated CA"),
+                     other_key.public_key(), other_key, ca=True)
+    assert select_issuer(_LEAF_DER, [other_ca.public_bytes(_DER)]) is None
+
+
+def test_select_issuer_picks_matching_from_bundle():
+    other_key = _key()
+    other_ca = _cert(_name("Unrelated CA"), _name("Unrelated CA"),
+                     other_key.public_key(), other_key, ca=True)
+    chosen = select_issuer(_LEAF_DER, [other_ca.public_bytes(_DER), _ISSUER_DER])
+    assert chosen == _ISSUER_DER
+
+
 # --- SSRF guard -------------------------------------------------------------
-def test_is_public_host_rejects_private_and_loopback():
+def test_is_public_host_rejects_private_loopback_and_shared():
     assert _is_public_host("127.0.0.1") is False
     assert _is_public_host("10.0.0.1") is False
     assert _is_public_host("169.254.0.1") is False
+    # Shared / CGNAT space (cloud metadata lives here) is not globally routable.
+    assert _is_public_host("100.100.100.200") is False
     assert _is_public_host("8.8.8.8") is True
 
 
@@ -173,7 +216,7 @@ def test_safe_open_rejects_private_host(monkeypatch):
     # Should never open a connection to a private address.
     def boom(*a, **k):
         raise AssertionError("must not open connection to private host")
-    monkeypatch.setattr(revocation.urllib.request, "build_opener", boom)
+    monkeypatch.setattr(revocation.socket, "create_connection", boom)
     assert _safe_open("http://127.0.0.1/ocsp", 1.0) is None
 
 

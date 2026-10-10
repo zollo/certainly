@@ -139,3 +139,44 @@ def test_breakdown_is_populated():
     assert host.breakdown is not None
     assert 0 <= host.breakdown.protocol_support <= 100
     assert 0 <= host.breakdown.cipher_strength <= 100
+
+
+# --- OCSP revocation status integrates with the grade -----------------------
+
+def test_revoked_ocsp_gates_grade_to_f():
+    # A validated "revoked" status must force a failing grade with a critical
+    # finding, even on an otherwise perfect modern configuration.
+    host = _modern_host()
+    host.hsts = True
+    host.certificate = _cert(ocsp_status="revoked")
+    score_host(host)
+    assert host.grade == "F"
+    assert host.score <= 20
+    titles = {f.title for f in host.findings}
+    assert "Certificate revoked" in titles
+    revoked = next(f for f in host.findings if f.title == "Certificate revoked")
+    assert revoked.severity == "critical"
+
+
+def test_good_ocsp_adds_positive_finding_without_penalty():
+    host = _modern_host()
+    host.hsts = True
+    host.hsts_max_age = 63072000
+    host.certificate = _cert(ocsp_status="good")
+    score_host(host)
+    # "good" is informational only — it must not lower an A/A+ config.
+    assert host.grade in {"A", "A+"}
+    assert host.score >= 90
+    good = next((f for f in host.findings if f.title == "Not revoked (OCSP)"), None)
+    assert good is not None and good.severity == "good"
+    assert "Certificate revoked" not in {f.title for f in host.findings}
+
+
+def test_unavailable_ocsp_is_silent():
+    host = _modern_host()
+    host.hsts = True
+    host.certificate = _cert(ocsp_status="unavailable")
+    score_host(host)
+    titles = {f.title for f in host.findings}
+    assert "Certificate revoked" not in titles
+    assert "Not revoked (OCSP)" not in titles
