@@ -296,6 +296,7 @@ def _scan_with_cache(targets: list[str], bypass_cache: bool,
             probe_workers=settings.probe_concurrency,
             check_caa=settings.check_caa,
             doh_url=settings.caa_doh_url,
+            check_revocation=settings.check_revocation,
         )
         for (index, _raw), result in zip(to_scan, scanned):
             if result.reachable:

@@ -354,6 +354,19 @@ function renderCertificate(c, host) {
   add("Revocation", endpoints.length
     ? document.createTextNode(`Published via ${endpoints.join(" + ")}`)
     : pill(false, "", "None published"));
+
+  // Validated live OCSP status (only shown when actually checked).
+  const OCSP_TEXT = {
+    good: "Good (not revoked)", revoked: "Revoked",
+    unknown: "Unknown", unavailable: "Responder unavailable",
+  };
+  if (c.ocsp_status && OCSP_TEXT[c.ocsp_status]) {
+    let statusNode;
+    if (c.ocsp_status === "good") statusNode = pill(true, OCSP_TEXT.good, "");
+    else if (c.ocsp_status === "revoked") statusNode = pill(false, "", OCSP_TEXT.revoked);
+    else statusNode = pill(false, "", OCSP_TEXT[c.ocsp_status], true);
+    add("OCSP status", statusNode);
+  }
   if (c.ocsp_urls && c.ocsp_urls.length) add("OCSP responder", c.ocsp_urls[0]);
   if (c.crl_urls && c.crl_urls.length) add("CRL", c.crl_urls[0]);
 

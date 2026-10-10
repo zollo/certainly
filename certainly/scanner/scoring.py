@@ -196,10 +196,24 @@ def _certificate_component(result: HostResult, findings: list[Finding]) -> tuple
         ))
         score = min(score, 60)
 
-    # --- Revocation information (published by the certificate) ---
-    # We report the endpoints the certificate advertises. We do not perform an
-    # unauthenticated live OCSP query (which would be MITM-forgeable over plain
-    # HTTP and an SSRF vector), so no revocation *status* gates the grade here.
+    # --- Revocation status (validated live OCSP) ---
+    # Only a fully validated OCSP response (CertID match, freshness, trusted
+    # signature — see scanner/revocation.py) ever reaches here, so "revoked"
+    # is safe to treat as a hard gate.
+    if cert.ocsp_status == "revoked":
+        findings.append(_severity_finding(
+            "critical", "Certificate revoked",
+            "A validated OCSP response reports this certificate as revoked.",
+        ))
+        valid = False
+        score = 0
+    elif cert.ocsp_status == "good":
+        findings.append(_severity_finding(
+            "good", "Not revoked (OCSP)",
+            "A validated OCSP response reports the certificate as good.",
+        ))
+
+    # --- Revocation information (endpoints published by the certificate) ---
     if cert.ocsp_urls or cert.crl_urls:
         parts = []
         if cert.ocsp_urls:

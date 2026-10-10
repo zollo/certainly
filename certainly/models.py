@@ -100,6 +100,13 @@ class CertificateInfo(BaseModel):
     crl_urls: list[str] = Field(
         default_factory=list, description="CRL distribution point URLs."
     )
+    ca_issuer_urls: list[str] = Field(
+        default_factory=list, description="AIA CA Issuers URLs (for fetching the issuer cert)."
+    )
+    ocsp_status: Optional[str] = Field(
+        default=None,
+        description="Validated live OCSP status: good, revoked, unknown, unavailable, or not_checked.",
+    )
     must_staple: bool = Field(
         default=False,
         description="True if the certificate carries the OCSP Must-Staple (TLS feature) extension.",

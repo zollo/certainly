@@ -125,6 +125,22 @@ def _ocsp_urls(cert: x509.Certificate) -> list[str]:
     return urls
 
 
+def _ca_issuer_urls(cert: x509.Certificate) -> list[str]:
+    try:
+        aia = cert.extensions.get_extension_for_oid(
+            ExtensionOID.AUTHORITY_INFORMATION_ACCESS
+        ).value
+    except x509.ExtensionNotFound:
+        return []
+    urls = []
+    for desc in aia:
+        if desc.access_method == AuthorityInformationAccessOID.CA_ISSUERS and isinstance(
+            desc.access_location, x509.UniformResourceIdentifier
+        ):
+            urls.append(desc.access_location.value)
+    return urls
+
+
 def _crl_urls(cert: x509.Certificate) -> list[str]:
     try:
         dps = cert.extensions.get_extension_for_oid(
@@ -215,6 +231,7 @@ def parse_certificate(cert_der: bytes, hostname: str) -> CertificateInfo:
         weak_signature=sig_hash in WEAK_SIG_HASHES,
         ocsp_urls=_ocsp_urls(cert),
         crl_urls=_crl_urls(cert),
+        ca_issuer_urls=_ca_issuer_urls(cert),
         must_staple=_must_staple(cert),
         sct_count=_sct_count(cert),
         is_post_quantum=_is_post_quantum(cert),
