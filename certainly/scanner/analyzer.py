@@ -15,6 +15,7 @@ from . import tls
 from .caa import DEFAULT_DOH_URL, lookup_caa
 from .certificate import parse_certificate
 from .http_checks import check_hsts
+from .revocation import check_ocsp, fetch_issuer, select_issuer
 from .scoring import score_host
 from .tls import SECURE_PROTOCOLS
 
@@ -61,7 +62,8 @@ def parse_target(raw: str, default_port: int) -> ParsedTarget:
 
 def analyze_target(raw: str, default_port: int, timeout: float,
                    probe_workers: int, check_caa: bool = True,
-                   doh_url: str = DEFAULT_DOH_URL) -> HostResult:
+                   doh_url: str = DEFAULT_DOH_URL,
+                   check_revocation: bool = True) -> HostResult:
     """Run the complete analysis pipeline for a single target."""
     start = time.monotonic()
     try:
@@ -125,6 +127,26 @@ def analyze_target(raw: str, default_port: int, timeout: float,
         except Exception:  # pragma: no cover
             continue
 
+    # Validated live OCSP revocation status (best-effort, fully verified).
+    if check_revocation and result.certificate is not None and result.certificate.ocsp_urls:
+        # The probe chain is from an unverified (CERT_NONE) connection, so the
+        # issuer candidate must be proven to have issued the leaf before its key
+        # is trusted for the OCSP CertID and signature.
+        issuer_der = select_issuer(outcome.leaf_cert_der, list(outcome.chain_der[1:]))
+        if issuer_der is None and result.certificate.ca_issuer_urls:
+            # Server didn't supply a usable chain (e.g. older TLS stack) — fetch
+            # the issuer from the AIA caIssuers URL (SSRF-guarded + verified).
+            issuer_der = fetch_issuer(
+                outcome.leaf_cert_der, result.certificate.ca_issuer_urls, timeout
+            )
+        if issuer_der is not None:
+            result.certificate.ocsp_status = check_ocsp(
+                outcome.leaf_cert_der, issuer_der,
+                result.certificate.ocsp_urls[0], timeout,
+            )
+        else:
+            result.certificate.ocsp_status = "not_checked"
+
     # DNS CAA for the hostname (DNS-over-HTTPS, best-effort).
     if check_caa:
         caa = lookup_caa(target.hostname, timeout, doh_url)
@@ -144,7 +166,8 @@ def analyze_target(raw: str, default_port: int, timeout: float,
 def analyze_targets(raws: list[str], default_port: int, timeout: float,
                     concurrency: int, probe_workers: int,
                     check_caa: bool = True,
-                    doh_url: str = DEFAULT_DOH_URL) -> list[HostResult]:
+                    doh_url: str = DEFAULT_DOH_URL,
+                    check_revocation: bool = True) -> list[HostResult]:
     """Analyze many targets in parallel, preserving input order."""
     if not raws:
         return []
@@ -152,7 +175,7 @@ def analyze_targets(raws: list[str], default_port: int, timeout: float,
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         future_to_index = {
             pool.submit(analyze_target, raw, default_port, timeout, probe_workers,
-                        check_caa, doh_url): i
+                        check_caa, doh_url, check_revocation): i
             for i, raw in enumerate(raws)
         }
         # Consume as each host finishes so a slow host doesn't hold up writing

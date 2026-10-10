@@ -72,6 +72,15 @@ class Settings(BaseSettings):
         default=True,
         description="Look up DNS CAA records (via DNS-over-HTTPS) for each host.",
     )
+    check_revocation: bool = Field(
+        default=True,
+        description=(
+            "Query the OCSP responder for live revocation status. The response "
+            "is fully validated (CertID match, freshness, issuer/delegated "
+            "signature) and the request is SSRF-guarded; unverified responses "
+            "are ignored."
+        ),
+    )
     caa_doh_url: str = Field(
         default="https://dns.google/resolve",
         description="DNS-over-HTTPS JSON resolver endpoint used for CAA lookups.",
