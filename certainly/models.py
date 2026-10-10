@@ -93,6 +93,32 @@ class CertificateInfo(BaseModel):
         default=False, description="True for MD5/SHA-1 based signatures."
     )
 
+    # --- Revocation information (from the certificate's extensions) ---
+    ocsp_urls: list[str] = Field(
+        default_factory=list, description="OCSP responder URLs (from AIA)."
+    )
+    crl_urls: list[str] = Field(
+        default_factory=list, description="CRL distribution point URLs."
+    )
+    must_staple: bool = Field(
+        default=False,
+        description="True if the certificate carries the OCSP Must-Staple (TLS feature) extension.",
+    )
+
+    # --- Certificate Transparency ---
+    sct_count: int = Field(
+        default=0,
+        description="Number of Signed Certificate Timestamps embedded in the certificate.",
+    )
+
+    # --- Post-quantum cryptography ---
+    # Tri-state: True/False once assessed, None for results from before this
+    # was collected (so legacy cached/shared payloads aren't mislabelled).
+    is_post_quantum: Optional[bool] = Field(
+        default=None,
+        description="True if the certificate's signature/key uses a recognised post-quantum algorithm; None if not assessed.",
+    )
+
 
 class Finding(BaseModel):
     """A single observation that affects the security posture / score."""
@@ -134,6 +160,10 @@ class HostResult(BaseModel):
     hsts: bool = False
     hsts_max_age: Optional[int] = None
     supports_tls13: bool = False
+
+    # DNS CAA (Certification Authority Authorization) for the hostname.
+    caa_checked: bool = False
+    caa_records: list[str] = Field(default_factory=list)
 
     findings: list[Finding] = Field(default_factory=list)
     duration_seconds: float = 0.0

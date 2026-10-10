@@ -245,7 +245,7 @@ function renderHost(host) {
 
   if (host.certificate) {
     body.appendChild(sectionTitle("Certificate"));
-    body.appendChild(renderCertificate(host.certificate));
+    body.appendChild(renderCertificate(host.certificate, host));
   }
 
   body.appendChild(sectionTitle("Protocols"));
@@ -306,21 +306,21 @@ function renderFindings(findings) {
     const sev = document.createElement("span");
     sev.className = "sev-dot " + f.severity;
     sev.textContent = f.severity;
-    const text = document.createElement("div");
     const t = document.createElement("div");
     t.className = "f-title";
     t.textContent = f.title;
     const d = document.createElement("div");
     d.className = "f-detail";
     d.textContent = f.detail;
-    text.append(t, d);
-    div.append(sev, text);
+    // Direct children so the two-column grid can lay title beside the badge
+    // and let the detail span the full width beneath.
+    div.append(sev, t, d);
     wrap.appendChild(div);
   });
   return wrap;
 }
 
-function renderCertificate(c) {
+function renderCertificate(c, host) {
   const dl = document.createElement("dl");
   dl.className = "kv";
   const add = (k, v) => {
@@ -336,6 +336,7 @@ function renderCertificate(c) {
     add("Alt names", c.subject_alt_names.join(", "));
   }
   add("Issuer", c.issuer);
+  add("Serial number", c.serial_number);
   add("Valid", pill(!c.is_expired && !c.is_not_yet_valid, "Yes", "No"));
   add("Hostname match", pill(c.hostname_matches, "Yes", "No"));
   const expText = `${new Date(c.not_after).toISOString().slice(0, 10)} (${c.days_until_expiry} days)`;
@@ -345,6 +346,43 @@ function renderCertificate(c) {
     ? pill(false, "", c.signature_algorithm + " (weak)")
     : document.createTextNode(c.signature_algorithm));
   add("Self-signed", pill(!c.is_self_signed, "No", "Yes"));
+
+  // --- Revocation information (endpoints published by the certificate) ---
+  const endpoints = [];
+  if (c.ocsp_urls && c.ocsp_urls.length) endpoints.push("OCSP");
+  if (c.crl_urls && c.crl_urls.length) endpoints.push("CRL");
+  add("Revocation", endpoints.length
+    ? document.createTextNode(`Published via ${endpoints.join(" + ")}`)
+    : pill(false, "", "None published"));
+  if (c.ocsp_urls && c.ocsp_urls.length) add("OCSP responder", c.ocsp_urls[0]);
+  if (c.crl_urls && c.crl_urls.length) add("CRL", c.crl_urls[0]);
+
+  // --- OCSP stapling (Must-Staple requirement) ---
+  add("OCSP stapling", c.must_staple
+    ? pill(true, "Required (Must-Staple)", "")
+    : document.createTextNode("Not required"));
+
+  // --- Certificate Transparency ---
+  add("Cert. Transparency", c.sct_count > 0
+    ? pill(true, `${c.sct_count} SCT${c.sct_count === 1 ? "" : "s"} embedded`, "")
+    : pill(false, "", "No embedded SCTs"));
+
+  // --- DNS CAA (host-level) ---
+  if (host && host.caa_checked) {
+    if (host.caa_records && host.caa_records.length) {
+      add("DNS CAA", host.caa_records.join("; "));
+    } else {
+      add("DNS CAA", pill(false, "", "None published"));
+    }
+  }
+
+  // --- Post-quantum (certificate algorithm; tri-state) ---
+  if (c.is_post_quantum === true) {
+    add("Post-quantum", pill(true, "Yes (certificate algorithm)", ""));
+  } else if (c.is_post_quantum === false) {
+    add("Post-quantum", document.createTextNode("No (classical algorithms)"));
+  }
+
   add("SHA-256", c.sha256_fingerprint);
   return dl;
 }

@@ -196,6 +196,65 @@ def _certificate_component(result: HostResult, findings: list[Finding]) -> tuple
         ))
         score = min(score, 60)
 
+    # --- Revocation information (published by the certificate) ---
+    # We report the endpoints the certificate advertises. We do not perform an
+    # unauthenticated live OCSP query (which would be MITM-forgeable over plain
+    # HTTP and an SSRF vector), so no revocation *status* gates the grade here.
+    if cert.ocsp_urls or cert.crl_urls:
+        parts = []
+        if cert.ocsp_urls:
+            parts.append(f"OCSP {cert.ocsp_urls[0]}")
+        if cert.crl_urls:
+            parts.append(f"CRL {cert.crl_urls[0]}")
+        findings.append(_severity_finding(
+            "info", "Revocation information published", "; ".join(parts) + ".",
+        ))
+    elif valid:
+        findings.append(_severity_finding(
+            "info", "No revocation endpoints",
+            "The certificate advertises neither an OCSP responder nor a CRL.",
+        ))
+
+    if cert.must_staple:
+        findings.append(_severity_finding(
+            "good", "OCSP Must-Staple",
+            "The certificate requires a stapled OCSP response (TLS feature extension).",
+        ))
+
+    # --- Certificate Transparency ---
+    if cert.sct_count > 0:
+        findings.append(_severity_finding(
+            "good", "Certificate Transparency",
+            f"{cert.sct_count} SCT(s) embedded — the certificate is logged in CT.",
+        ))
+    elif valid:
+        findings.append(_severity_finding(
+            "info", "No embedded SCTs",
+            "No Certificate Transparency timestamps are embedded in the certificate.",
+        ))
+
+    # --- Post-quantum cryptography analysis (certificate algorithms only) ---
+    # This reflects the certificate's signature/key algorithm, not the
+    # connection's key exchange. Whether traffic resists "harvest-now,
+    # decrypt-later" depends on the negotiated key-exchange group, which this
+    # scanner does not yet probe — so this is informational either way.
+    if cert.is_post_quantum is True:
+        findings.append(_severity_finding(
+            "info", "Post-quantum certificate algorithm",
+            f"The certificate uses a post-quantum algorithm ({cert.signature_algorithm}). "
+            "Note: connection-level quantum resistance also depends on the "
+            "negotiated key-exchange group, which is not probed here.",
+        ))
+    elif cert.is_post_quantum is False:
+        findings.append(_severity_finding(
+            "info", "Classical certificate algorithms",
+            f"The certificate uses classical algorithms ({cert.key_type}, "
+            f"{cert.signature_algorithm}), which are not quantum-resistant. "
+            "Connection-level resistance to 'harvest-now, decrypt-later' also "
+            "depends on the negotiated key exchange (e.g. a hybrid such as "
+            "X25519MLKEM768), which this scanner does not yet probe.",
+        ))
+
     if valid:
         findings.append(_severity_finding(
             "good", "Valid certificate",
@@ -284,6 +343,23 @@ def score_host(result: HostResult) -> None:
             "low", "HSTS not enabled",
             "HTTP Strict Transport Security is not enabled.",
         ))
+
+    # DNS CAA (Certification Authority Authorization). Report neutrally: an
+    # RRset may contain only iodef (reporting) records and authorise no CA, so
+    # we don't claim issuance is "restricted".
+    if result.caa_checked:
+        if result.caa_records:
+            findings.append(_severity_finding(
+                "good", "DNS CAA records published",
+                f"{len(result.caa_records)} CAA record(s) are published for this "
+                "name: " + "; ".join(result.caa_records[:5]) + ".",
+            ))
+        else:
+            findings.append(_severity_finding(
+                "info", "No DNS CAA records",
+                "No CAA records are published at this name, so CAA does not "
+                "constrain certificate issuance for it.",
+            ))
 
     if not cert_valid:
         grade = "F"

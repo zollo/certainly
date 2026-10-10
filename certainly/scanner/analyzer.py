@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from ..models import CipherResult, HostResult, ProtocolResult
 from . import tls
+from .caa import DEFAULT_DOH_URL, lookup_caa
 from .certificate import parse_certificate
 from .http_checks import check_hsts
 from .scoring import score_host
@@ -59,7 +60,8 @@ def parse_target(raw: str, default_port: int) -> ParsedTarget:
 
 
 def analyze_target(raw: str, default_port: int, timeout: float,
-                   probe_workers: int) -> HostResult:
+                   probe_workers: int, check_caa: bool = True,
+                   doh_url: str = DEFAULT_DOH_URL) -> HostResult:
     """Run the complete analysis pipeline for a single target."""
     start = time.monotonic()
     try:
@@ -123,6 +125,12 @@ def analyze_target(raw: str, default_port: int, timeout: float,
         except Exception:  # pragma: no cover
             continue
 
+    # DNS CAA for the hostname (DNS-over-HTTPS, best-effort).
+    if check_caa:
+        caa = lookup_caa(target.hostname, timeout, doh_url)
+        result.caa_checked = caa is not None
+        result.caa_records = caa or []
+
     # HSTS (application layer)
     hsts = check_hsts(target.hostname, target.port, timeout)
     result.hsts = hsts.present
@@ -134,14 +142,17 @@ def analyze_target(raw: str, default_port: int, timeout: float,
 
 
 def analyze_targets(raws: list[str], default_port: int, timeout: float,
-                    concurrency: int, probe_workers: int) -> list[HostResult]:
+                    concurrency: int, probe_workers: int,
+                    check_caa: bool = True,
+                    doh_url: str = DEFAULT_DOH_URL) -> list[HostResult]:
     """Analyze many targets in parallel, preserving input order."""
     if not raws:
         return []
     results: list[HostResult | None] = [None] * len(raws)
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         future_to_index = {
-            pool.submit(analyze_target, raw, default_port, timeout, probe_workers): i
+            pool.submit(analyze_target, raw, default_port, timeout, probe_workers,
+                        check_caa, doh_url): i
             for i, raw in enumerate(raws)
         }
         # Consume as each host finishes so a slow host doesn't hold up writing
