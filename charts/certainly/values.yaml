@@ -1,0 +1,250 @@
+# Default values for the Certainly chart.
+# This is a YAML-formatted file. Values here are overridable with `--set` or a
+# custom values file (`-f my-values.yaml`).
+
+# -- Override the chart name (used in resource names and labels).
+nameOverride: ""
+# -- Override the fully qualified release name.
+fullnameOverride: ""
+
+image:
+  # -- Container image repository. The same image serves both the API and the
+  # worker; the role is selected by the container command.
+  repository: ghcr.io/zollo/certainly
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Image tag. Defaults to the chart's appVersion when left empty.
+  tag: ""
+
+# -- Secrets used to pull the image from a private registry.
+imagePullSecrets: []
+#  - name: ghcr-credentials
+
+serviceAccount:
+  # -- Whether to create a ServiceAccount for the workloads.
+  create: true
+  # -- Annotations to add to the ServiceAccount.
+  annotations: {}
+  # -- Name of the ServiceAccount. Generated from the fullname when empty.
+  name: ""
+
+# -- Non-secret application configuration. Each key becomes a CERTAINLY_* env
+# var (upper-cased) mounted via a ConfigMap. See .env.example for all options.
+# Leave a key unset to use the application default.
+config:
+  host: "0.0.0.0"
+  port: 8000
+  # Comma-separated list of allowed CORS origins ("" = same-origin only).
+  corsAllowOrigins: ""
+  maxTargetsPerRequest: 10
+  scanConcurrency: 10
+  probeConcurrency: 12
+  connectTimeout: 8
+  defaultPort: 443
+  checkCaa: true
+  checkRevocation: true
+  caaDohUrl: "https://dns.google/resolve"
+  cacheTtlSeconds: 86400
+  enableSharing: true
+  shareTtlSeconds: 86400
+  jobResultTtlSeconds: 604800
+  jobTimeoutSeconds: 300
+  # Run jobs in-process instead of on a worker. Leave false in Kubernetes.
+  useInlineWorker: false
+
+# -- Additional plain environment variables for every workload. Rendered into
+# the ConfigMap. Use this for CERTAINLY_* settings not covered above.
+extraEnv: {}
+#  CERTAINLY_SOME_FLAG: "value"
+
+# -- Sensitive environment variables, rendered into a Secret and injected via
+# envFrom. Use for credentials embedded in connection strings, etc.
+secretEnv: {}
+#  CERTAINLY_REDIS_URL: "redis://:password@redis.example.com:6379/0"
+
+# -- Name of a pre-existing Secret to load env vars from (via envFrom) instead
+# of having the chart create one from `secretEnv`.
+existingSecret: ""
+
+api:
+  # -- Number of API replicas (ignored when autoscaling is enabled).
+  replicaCount: 1
+  # -- Extra pod annotations for the API deployment.
+  podAnnotations: {}
+  # -- Pod-level security context for the API pods.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container-level security context for the API container.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests and limits for the API container.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Liveness probe (hits /api/health).
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe (hits /api/health).
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Node selector for API pods.
+  nodeSelector: {}
+  # -- Tolerations for API pods.
+  tolerations: []
+  # -- Affinity rules for API pods.
+  affinity: {}
+  # -- Horizontal Pod Autoscaler for the API deployment.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: null
+
+worker:
+  # -- Whether to deploy the background scan worker. Disable only if running
+  # with config.useInlineWorker=true.
+  enabled: true
+  # -- Number of worker replicas (ignored when autoscaling is enabled).
+  replicaCount: 1
+  # -- Extra pod annotations for the worker deployment.
+  podAnnotations: {}
+  # -- Pod-level security context for the worker pods.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container-level security context for the worker container.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests and limits for the worker container.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Node selector for worker pods.
+  nodeSelector: {}
+  # -- Tolerations for worker pods.
+  tolerations: []
+  # -- Affinity rules for worker pods.
+  affinity: {}
+  # -- Horizontal Pod Autoscaler for the worker deployment.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: null
+
+service:
+  # -- Service type for the API.
+  type: ClusterIP
+  # -- Service port exposing the API.
+  port: 80
+
+ingress:
+  # -- Whether to create an Ingress for the API.
+  enabled: false
+  # -- IngressClass name.
+  className: ""
+  # -- Annotations for the Ingress.
+  annotations: {}
+  #  kubernetes.io/ingress.class: nginx
+  #  cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: certainly.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration for the Ingress.
+  tls: []
+  #  - secretName: certainly-tls
+  #    hosts:
+  #      - certainly.local
+
+# Bundled Redis (job queue + result cache). For production you may prefer a
+# managed/external Redis: set redis.enabled=false and externalRedis.url.
+redis:
+  # -- Deploy a single in-cluster Redis instance.
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  # -- Resource requests and limits for Redis.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Pod-level security context for Redis.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container-level security context for Redis.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  persistence:
+    # -- Persist the Redis append-only file across restarts via a PVC. When
+    # false, an emptyDir is used (cache/jobs are lost on restart).
+    enabled: true
+    # -- StorageClass for the PVC ("" = cluster default).
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+  # -- Node selector for the Redis pod.
+  nodeSelector: {}
+  # -- Tolerations for the Redis pod.
+  tolerations: []
+  # -- Affinity rules for the Redis pod.
+  affinity: {}
+
+# External Redis used when redis.enabled is false.
+externalRedis:
+  # -- Full Redis connection URL. Required when redis.enabled is false. If the
+  # URL contains credentials, prefer setting it via secretEnv.CERTAINLY_REDIS_URL
+  # or an existingSecret instead of here.
+  url: ""
