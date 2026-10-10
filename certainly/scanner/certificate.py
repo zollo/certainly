@@ -6,12 +6,27 @@ from datetime import datetime, timezone
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed448, ed25519, rsa
-from cryptography.x509.oid import ExtensionOID, NameOID
+from cryptography.x509.oid import AuthorityInformationAccessOID, ExtensionOID, NameOID
 
 from ..models import CertificateInfo
 
 # Signature hash algorithms that are considered weak / broken.
 WEAK_SIG_HASHES = {"md5", "sha1"}
+
+# Known post-quantum signature/key algorithm OIDs (NIST FIPS 203/204/205 and
+# related). Classical certificates never carry these; their presence means the
+# certificate is quantum-resistant.
+PQC_OIDS = {
+    "2.16.840.1.101.3.4.3.17",  # ML-DSA-44
+    "2.16.840.1.101.3.4.3.18",  # ML-DSA-65
+    "2.16.840.1.101.3.4.3.19",  # ML-DSA-87
+    "2.16.840.1.101.3.4.3.20",  # SLH-DSA-SHA2-128s
+    "2.16.840.1.101.3.4.3.21",  # SLH-DSA-SHA2-128f
+    "1.3.6.1.4.1.2.267.7.4.4",  # Dilithium2 (pre-standardisation)
+    "1.3.9999.3.6",             # Falcon-512 (pre-standardisation)
+    "1.3.9999.6.4.16",          # SPHINCS+ (pre-standardisation)
+}
+_CLASSICAL_KEY_TYPES = ("RSA", "EC", "DSA", "Ed25519", "Ed448")
 
 
 def _name_to_str(name: x509.Name) -> str:
@@ -95,6 +110,70 @@ def _fingerprint(cert: x509.Certificate) -> str:
     return ":".join(f"{b:02X}" for b in digest)
 
 
+def _ocsp_urls(cert: x509.Certificate) -> list[str]:
+    try:
+        aia = cert.extensions.get_extension_for_oid(
+            ExtensionOID.AUTHORITY_INFORMATION_ACCESS
+        ).value
+    except x509.ExtensionNotFound:
+        return []
+    urls = []
+    for desc in aia:
+        if desc.access_method == AuthorityInformationAccessOID.OCSP and isinstance(
+            desc.access_location, x509.UniformResourceIdentifier
+        ):
+            urls.append(desc.access_location.value)
+    return urls
+
+
+def _crl_urls(cert: x509.Certificate) -> list[str]:
+    try:
+        dps = cert.extensions.get_extension_for_oid(
+            ExtensionOID.CRL_DISTRIBUTION_POINTS
+        ).value
+    except x509.ExtensionNotFound:
+        return []
+    urls = []
+    for dp in dps:
+        for name in dp.full_name or []:
+            if isinstance(name, x509.UniformResourceIdentifier):
+                urls.append(name.value)
+    return urls
+
+
+def _must_staple(cert: x509.Certificate) -> bool:
+    try:
+        feature = cert.extensions.get_extension_for_oid(ExtensionOID.TLS_FEATURE).value
+    except x509.ExtensionNotFound:
+        return False
+    return x509.TLSFeatureType.status_request in feature
+
+
+def _sct_count(cert: x509.Certificate) -> int:
+    try:
+        scts = cert.extensions.get_extension_for_oid(
+            ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS
+        ).value
+    except x509.ExtensionNotFound:
+        return 0
+    try:
+        return len(list(scts))
+    except TypeError:  # pragma: no cover - defensive
+        return 0
+
+
+def _is_post_quantum(cert: x509.Certificate, key_type: str) -> bool:
+    try:
+        sig_oid = cert.signature_algorithm_oid.dotted_string
+    except Exception:  # pragma: no cover - defensive
+        sig_oid = ""
+    if sig_oid in PQC_OIDS:
+        return True
+    # A key type cryptography could not classify as a classical family is
+    # treated as post-quantum (it falls through _key_details to a class name).
+    return not key_type.startswith(_CLASSICAL_KEY_TYPES)
+
+
 def parse_certificate(cert_der: bytes, hostname: str) -> CertificateInfo:
     """Parse a DER-encoded certificate into a :class:`CertificateInfo`."""
     cert = x509.load_der_x509_certificate(cert_der)
@@ -127,6 +206,11 @@ def parse_certificate(cert_der: bytes, hostname: str) -> CertificateInfo:
         version=cert.version.name,
         hostname_matches=_hostname_matches(hostname, cert_der),
         weak_signature=sig_hash in WEAK_SIG_HASHES,
+        ocsp_urls=_ocsp_urls(cert),
+        crl_urls=_crl_urls(cert),
+        must_staple=_must_staple(cert),
+        sct_count=_sct_count(cert),
+        is_post_quantum=_is_post_quantum(cert, key_type),
     )
 
 

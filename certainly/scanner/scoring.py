@@ -196,6 +196,69 @@ def _certificate_component(result: HostResult, findings: list[Finding]) -> tuple
         ))
         score = min(score, 60)
 
+    # --- Revocation status & information ---
+    if cert.ocsp_status == "revoked":
+        findings.append(_severity_finding(
+            "critical", "Certificate revoked",
+            "The OCSP responder reports this certificate as revoked.",
+        ))
+        valid = False
+        score = 0
+    elif cert.ocsp_status == "good":
+        findings.append(_severity_finding(
+            "good", "Not revoked",
+            "The OCSP responder reports the certificate as good.",
+        ))
+
+    if cert.ocsp_urls or cert.crl_urls:
+        parts = []
+        if cert.ocsp_urls:
+            parts.append(f"OCSP {cert.ocsp_urls[0]}")
+        if cert.crl_urls:
+            parts.append(f"CRL {cert.crl_urls[0]}")
+        findings.append(_severity_finding(
+            "info", "Revocation information published", "; ".join(parts) + ".",
+        ))
+    elif valid:
+        findings.append(_severity_finding(
+            "info", "No revocation endpoints",
+            "The certificate advertises neither an OCSP responder nor a CRL.",
+        ))
+
+    if cert.must_staple:
+        findings.append(_severity_finding(
+            "good", "OCSP Must-Staple",
+            "The certificate requires a stapled OCSP response (TLS feature extension).",
+        ))
+
+    # --- Certificate Transparency ---
+    if cert.sct_count > 0:
+        findings.append(_severity_finding(
+            "good", "Certificate Transparency",
+            f"{cert.sct_count} SCT(s) embedded — the certificate is logged in CT.",
+        ))
+    elif valid:
+        findings.append(_severity_finding(
+            "info", "No embedded SCTs",
+            "No Certificate Transparency timestamps are embedded in the certificate.",
+        ))
+
+    # --- Post-quantum cryptography analysis ---
+    if cert.is_post_quantum:
+        findings.append(_severity_finding(
+            "good", "Post-quantum ready",
+            f"The certificate uses a post-quantum algorithm ({cert.signature_algorithm}).",
+        ))
+    else:
+        findings.append(_severity_finding(
+            "info", "No post-quantum cryptography",
+            f"Classical algorithms are in use ({cert.key_type}, "
+            f"{cert.signature_algorithm}); these are not resistant to quantum "
+            "attack. Traffic captured today could be decrypted once large quantum "
+            "computers exist (harvest-now, decrypt-later). Consider a hybrid "
+            "post-quantum key exchange (e.g. X25519MLKEM768) when available.",
+        ))
+
     if valid:
         findings.append(_severity_finding(
             "good", "Valid certificate",
@@ -284,6 +347,21 @@ def score_host(result: HostResult) -> None:
             "low", "HSTS not enabled",
             "HTTP Strict Transport Security is not enabled.",
         ))
+
+    # DNS CAA (Certification Authority Authorization).
+    if result.caa_checked:
+        if result.caa_records:
+            findings.append(_severity_finding(
+                "good", "DNS CAA configured",
+                f"{len(result.caa_records)} CAA record(s) restrict which CAs may "
+                "issue certificates for this domain.",
+            ))
+        else:
+            findings.append(_severity_finding(
+                "info", "No DNS CAA records",
+                "No CAA records are published; any CA may issue certificates for "
+                "this domain.",
+            ))
 
     if not cert_valid:
         grade = "F"

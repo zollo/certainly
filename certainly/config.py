@@ -68,6 +68,18 @@ class Settings(BaseSettings):
         default=443,
         description="Port used when a target does not specify one.",
     )
+    check_revocation: bool = Field(
+        default=True,
+        description="Perform an active OCSP revocation query against the responder in the cert.",
+    )
+    check_caa: bool = Field(
+        default=True,
+        description="Look up DNS CAA records (via DNS-over-HTTPS) for each host.",
+    )
+    caa_doh_url: str = Field(
+        default="https://dns.google/resolve",
+        description="DNS-over-HTTPS JSON resolver endpoint used for CAA lookups.",
+    )
 
     # --- Caching -----------------------------------------------------------
     cache_ttl_seconds: int = Field(
