@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "certainly.configMapName" . }}
+  labels:
+    {{- include "certainly.labels" . | nindent 4 }}
+data:
+  {{- /* Non-secret CERTAINLY_* settings. Everything is a string in a ConfigMap. */}}
+  CERTAINLY_HOST: {{ .Values.config.host | quote }}
+  CERTAINLY_PORT: {{ .Values.config.port | quote }}
+  CERTAINLY_CORS_ALLOW_ORIGINS: {{ .Values.config.corsAllowOrigins | quote }}
+  CERTAINLY_MAX_TARGETS_PER_REQUEST: {{ .Values.config.maxTargetsPerRequest | quote }}
+  CERTAINLY_SCAN_CONCURRENCY: {{ .Values.config.scanConcurrency | quote }}
+  CERTAINLY_PROBE_CONCURRENCY: {{ .Values.config.probeConcurrency | quote }}
+  CERTAINLY_CONNECT_TIMEOUT: {{ .Values.config.connectTimeout | quote }}
+  CERTAINLY_DEFAULT_PORT: {{ .Values.config.defaultPort | quote }}
+  CERTAINLY_CHECK_CAA: {{ .Values.config.checkCaa | quote }}
+  CERTAINLY_CHECK_REVOCATION: {{ .Values.config.checkRevocation | quote }}
+  CERTAINLY_CAA_DOH_URL: {{ .Values.config.caaDohUrl | quote }}
+  CERTAINLY_CACHE_TTL_SECONDS: {{ .Values.config.cacheTtlSeconds | quote }}
+  CERTAINLY_ENABLE_SHARING: {{ .Values.config.enableSharing | quote }}
+  CERTAINLY_SHARE_TTL_SECONDS: {{ .Values.config.shareTtlSeconds | quote }}
+  CERTAINLY_JOB_RESULT_TTL_SECONDS: {{ .Values.config.jobResultTtlSeconds | quote }}
+  CERTAINLY_JOB_TIMEOUT_SECONDS: {{ .Values.config.jobTimeoutSeconds | quote }}
+  CERTAINLY_USE_INLINE_WORKER: {{ .Values.config.useInlineWorker | quote }}
+  {{- $redisUrl := include "certainly.redisUrl" . }}
+  {{- if $redisUrl }}
+  CERTAINLY_REDIS_URL: {{ $redisUrl | quote }}
+  {{- end }}
+  {{- range $key, $value := .Values.extraEnv }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

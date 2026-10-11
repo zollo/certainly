@@ -1,0 +1,24 @@
+apiVersion: v2
+name: certainly
+description: A Helm chart to deploy Certainly, an open-source SSL/TLS analyzer.
+type: application
+
+# Chart version — bump on every chart change (independent of the app version).
+version: 0.1.0
+
+# The default application version this chart deploys. Matches the image tag
+# used when `image.tag` is left empty, and the version reported by the app.
+appVersion: "1.0.0"
+
+home: https://github.com/zollo/certainly
+sources:
+  - https://github.com/zollo/certainly
+keywords:
+  - ssl
+  - tls
+  - certificate
+  - security
+  - scanner
+maintainers:
+  - name: zollo
+    url: https://github.com/zollo
