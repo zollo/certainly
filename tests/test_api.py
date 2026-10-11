@@ -41,6 +41,34 @@ def test_health(client):
     assert res.json()["status"] == "ok"
 
 
+def test_version_endpoint(client):
+    res = client.get("/api/version")
+    assert res.status_code == 200
+    body = res.json()
+    # Every field resolves to a non-empty string so the footer never blanks.
+    assert body["version"]
+    assert body["commit"]
+    assert body["build_date"]
+
+
+def test_version_uses_injected_env(client, monkeypatch):
+    from certainly import version as version_mod
+
+    version_mod.get_build_info.cache_clear()
+    monkeypatch.setenv("CERTAINLY_VERSION", "9.9.9")
+    monkeypatch.setenv("CERTAINLY_GIT_COMMIT", "abc1234")
+    monkeypatch.setenv("CERTAINLY_BUILD_DATE", "2026-01-01T00:00:00Z")
+    try:
+        body = client.get("/api/version").json()
+        assert body == {
+            "version": "9.9.9",
+            "commit": "abc1234",
+            "build_date": "2026-01-01T00:00:00Z",
+        }
+    finally:
+        version_mod.get_build_info.cache_clear()
+
+
 def test_config_exposes_limit(client):
     res = client.get("/api/config")
     assert res.status_code == 200

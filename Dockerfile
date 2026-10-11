@@ -17,6 +17,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN pip install --no-cache-dir --no-deps -e .
 
+# Build metadata, injected by the release pipeline and surfaced in the UI
+# footer. Declared after the dependency layers so a new commit/date doesn't
+# bust the pip cache. Left empty for local/PR builds, where the app falls back
+# to the packaged version.
+ARG CERTAINLY_VERSION=""
+ARG CERTAINLY_GIT_COMMIT=""
+ARG CERTAINLY_BUILD_DATE=""
+ENV CERTAINLY_VERSION=$CERTAINLY_VERSION \
+    CERTAINLY_GIT_COMMIT=$CERTAINLY_GIT_COMMIT \
+    CERTAINLY_BUILD_DATE=$CERTAINLY_BUILD_DATE
+
 EXPOSE 8000
 
 # Default role: API + web server. Override the command to run the worker.

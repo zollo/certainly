@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import get_settings
 from .jobs import QueueUnavailableError, get_job, get_share, submit_scan
 from .models import JobStatus, ScanRequest, SubmitResponse
+from .version import get_build_info
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -36,6 +37,12 @@ app.add_middleware(
 def health() -> dict:
     """Simple liveness probe."""
     return {"status": "ok", "service": "certainly"}
+
+
+@app.get("/api/version", tags=["meta"])
+def version() -> dict:
+    """Expose build metadata (version, commit, build date) for the UI footer."""
+    return get_build_info()
 
 
 @app.get("/api/config", tags=["meta"])
