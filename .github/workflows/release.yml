@@ -159,6 +159,11 @@ jobs:
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=${{ needs.version.outputs.major_minor }}
             type=sha,format=short
+      - name: Compute build metadata
+        id: buildinfo
+        run: |
+          echo "commit=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
       - name: Build & push
         id: build
         uses: docker/build-push-action@v6
@@ -168,6 +173,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CERTAINLY_VERSION=${{ needs.version.outputs.version }}
+            CERTAINLY_GIT_COMMIT=${{ steps.buildinfo.outputs.commit }}
+            CERTAINLY_BUILD_DATE=${{ steps.buildinfo.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Sign image (keyless)

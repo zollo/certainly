@@ -226,6 +226,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 /* Footer */
 .site-footer { border-top: 1px solid var(--border); padding: 24px 0; color: var(--text-dim); font-size: 13px; }
+.site-footer .build-info { margin-top: 8px; font-size: 12px; opacity: 0.8; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 560px) {
   .bar-row { grid-template-columns: 96px 1fr 38px; }

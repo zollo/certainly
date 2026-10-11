@@ -30,6 +30,27 @@ async function loadConfig() {
   }
 }
 
+async function loadBuildInfo() {
+  try {
+    const res = await fetch("/api/version");
+    if (!res.ok) return;
+    const info = await res.json();
+    if (!info || !info.version) return;
+    const parts = [`v${info.version}`];
+    if (info.commit && info.commit !== "unknown") parts.push(info.commit);
+    if (info.build_date && info.build_date !== "dev") {
+      parts.push(`built ${info.build_date}`);
+    } else if (info.build_date === "dev") {
+      parts.push("dev build");
+    }
+    const box = el("build-info");
+    box.textContent = parts.join(" · ");
+    box.hidden = false;
+  } catch (_e) {
+    /* Build info is non-essential; leave the footer line hidden. */
+  }
+}
+
 function parseTargets() {
   return el("targets").value
     .split(/[\n,]+/)
@@ -491,6 +512,8 @@ function init() {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") startScan();
   });
   el("share-copy").addEventListener("click", copyShareUrl);
+
+  loadBuildInfo();
 
   const match = window.location.pathname.match(/^\/s\/([^/]+)/);
   if (match) {
