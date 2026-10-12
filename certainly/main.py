@@ -3,15 +3,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from functools import lru_cache
+from html import escape
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .jobs import QueueUnavailableError, get_job, get_share, submit_scan
 from .models import JobStatus, ScanRequest, SubmitResponse
-from .version import get_build_info
+from .version import format_build_line, get_build_info
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -145,12 +148,24 @@ def read_job_status(job_id: str) -> dict:
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    @lru_cache
+    def _index_html() -> str:
+        """Index page with the build-info line rendered into the footer.
+
+        Rendering server-side (rather than fetching it from the client) means
+        the build identity is always present in the delivered HTML, so it stays
+        visible even if client JS or the /api/version fetch never runs. Cached:
+        both the template and the build info are fixed for the process lifetime.
+        """
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        return html.replace("<!--BUILD_INFO-->", escape(format_build_line()))
+
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(str(STATIC_DIR / "index.html"))
+    def index() -> HTMLResponse:
+        return HTMLResponse(_index_html())
 
     @app.get("/s/{share_id}", include_in_schema=False)
-    def share_page(share_id: str) -> FileResponse:
+    def share_page(share_id: str) -> HTMLResponse:
         # Same single-page app; the client detects the /s/ path and renders
         # the shared result read-only by fetching /api/shares/{id}.
-        return FileResponse(str(STATIC_DIR / "index.html"))
+        return HTMLResponse(_index_html())

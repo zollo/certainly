@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from certainly import jobs  # noqa: E402
 from certainly.config import get_settings  # noqa: E402
 from certainly.models import HostResult  # noqa: E402
+from certainly.version import format_build_line, get_build_info  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +68,31 @@ def test_version_uses_injected_env(client, monkeypatch):
         }
     finally:
         version_mod.get_build_info.cache_clear()
+
+
+def test_index_renders_build_line_in_footer(client):
+    # The build line is rendered into the HTML server-side, so it is present
+    # (and visible) without relying on client JS or the /api/version fetch.
+    body = client.get("/").text
+    line = format_build_line(get_build_info())
+    assert line  # always at least "v<version>"
+    assert line in body
+    assert "<!--BUILD_INFO-->" not in body
+
+
+def test_share_page_renders_build_line(client):
+    body = client.get("/s/whatever").text
+    assert format_build_line(get_build_info()) in body
+
+
+def test_format_build_line_variants():
+    assert format_build_line(
+        {"version": "1.4.0", "commit": "abc1234", "build_date": "2026-01-01T00:00:00Z"}
+    ) == "v1.4.0 · abc1234 · built 2026-01-01T00:00:00Z"
+    # Local dev: unknown commit is omitted, dev build date is labelled.
+    assert format_build_line(
+        {"version": "1.0.0", "commit": "unknown", "build_date": "dev"}
+    ) == "v1.0.0 · dev build"
 
 
 def test_config_exposes_limit(client):
