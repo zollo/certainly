@@ -8,7 +8,9 @@ data:
   {{- /* Non-secret CERTAINLY_* settings. Everything is a string in a ConfigMap. */}}
   CERTAINLY_HOST: {{ .Values.config.host | quote }}
   CERTAINLY_PORT: {{ .Values.config.port | quote }}
-  CERTAINLY_CORS_ALLOW_ORIGINS: {{ .Values.config.corsAllowOrigins | quote }}
+  {{- with .Values.config.corsAllowOrigins }}
+  CERTAINLY_CORS_ALLOW_ORIGINS: {{ . | quote }}
+  {{- end }}
   CERTAINLY_MAX_TARGETS_PER_REQUEST: {{ .Values.config.maxTargetsPerRequest | quote }}
   CERTAINLY_SCAN_CONCURRENCY: {{ .Values.config.scanConcurrency | quote }}
   CERTAINLY_PROBE_CONCURRENCY: {{ .Values.config.probeConcurrency | quote }}

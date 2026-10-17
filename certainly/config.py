@@ -7,9 +7,10 @@ a single container reads its whole configuration from the environment.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,7 +30,9 @@ class Settings(BaseSettings):
     # --- Web / API ---------------------------------------------------------
     host: str = Field(default="0.0.0.0", description="Bind address for the API server.")
     port: int = Field(default=8000, description="Port for the API server.")
-    cors_allow_origins: list[str] = Field(
+    # NoDecode: hand the raw env string to _split_origins instead of letting
+    # pydantic-settings JSON-decode it (which fails on "" and on "a,b").
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         description=(
             "Cross-origin origins allowed to call the API from a browser. "
