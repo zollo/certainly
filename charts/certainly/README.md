@@ -17,8 +17,19 @@ The chart deploys three workloads, mirroring the Docker Compose topology:
 
 ## Installing
 
+Every release publishes the chart to GHCR, versioned like the app (the chart
+version and appVersion are both the release, so it deploys the matching image):
+
 ```sh
-# From a checkout of the repo:
+helm install certainly oci://ghcr.io/zollo/charts/certainly --version 1.5.0
+
+# Latest release:
+helm install certainly oci://ghcr.io/zollo/charts/certainly
+```
+
+From a checkout of the repo (deploys the `latest` image unless `image.tag` is set):
+
+```sh
 helm install certainly ./charts/certainly
 
 # Override values:
@@ -52,7 +63,7 @@ repo's `.env.example`). Set non-secret values under `config`, and secret values
 | Key | Default | Description |
 | --- | --- | --- |
 | `image.repository` | `ghcr.io/zollo/certainly` | Image repository (shared by API and worker). |
-| `image.tag` | `""` (chart `appVersion`) | Image tag. |
+| `image.tag` | `""` (chart `appVersion`, `latest` from a checkout) | Image tag. |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy. |
 | `imagePullSecrets` | `[]` | Secrets for pulling from a private registry. |
 | `config.*` | see `values.yaml` | Non-secret `CERTAINLY_*` settings. |

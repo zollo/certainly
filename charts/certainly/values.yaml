@@ -13,7 +13,8 @@ image:
   repository: ghcr.io/zollo/certainly
   # -- Image pull policy.
   pullPolicy: IfNotPresent
-  # -- Image tag. Defaults to the chart's appVersion when left empty.
+  # -- Image tag. Defaults to the chart's appVersion (the release a published
+  # chart was cut from), or "latest" when installing from a source checkout.
   tag: ""
 
 # -- Secrets used to pull the image from a private registry.
