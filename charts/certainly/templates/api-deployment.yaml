@@ -35,7 +35,7 @@ spec:
       {{- end }}
       containers:
         - name: api
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "certainly.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["uvicorn", "certainly.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:

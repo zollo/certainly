@@ -101,3 +101,11 @@ Name of the Secret holding sensitive CERTAINLY_* settings.
 {{- printf "%s-secret" (include "certainly.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Container image. The tag defaults to the chart appVersion (the release a
+published chart was cut from), or "latest" for a source checkout.
+*/}}
+{{- define "certainly.image" -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion | default "latest") }}
+{{- end }}

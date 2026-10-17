@@ -5,7 +5,8 @@ name: Release
 #     enforces Conventional Commit PR titles — the repo squash-merges with the
 #     PR title as the commit subject, so the title is what versioning reads).
 #   * On every push to main the version is computed, a GitHub Release is cut,
-#     and a signed, multi-arch image is published to GHCR.
+#     a signed, multi-arch image is published to GHCR, and the Helm chart is
+#     published to oci://ghcr.io/zollo/charts/certainly with the same version.
 #   * On pull requests the tests run and the image is built (not pushed) to
 #     catch Dockerfile breakage early.
 
@@ -190,3 +191,32 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  chart:
+    name: Package & publish Helm chart
+    needs: [version, images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # attach the chart to the GitHub release
+      packages: write        # push the chart to GHCR
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint
+        run: helm lint charts/certainly
+      - name: Package
+        run: helm package charts/certainly --version "$VERSION" --app-version "$VERSION" --destination dist
+      - name: Push to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u "${{ github.actor }}" --password-stdin
+          helm push "dist/certainly-${VERSION}.tgz" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
+      - name: Attach to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "dist/certainly-${VERSION}.tgz" --clobber

@@ -3,12 +3,11 @@ name: certainly
 description: A Helm chart to deploy Certainly, an open-source SSL/TLS analyzer.
 type: application
 
-# Chart version — bump on every chart change (independent of the app version).
-version: 0.1.0
-
-# The default application version this chart deploys. Matches the image tag
-# used when `image.tag` is left empty, and the version reported by the app.
-appVersion: "1.0.0"
+# Placeholders: the release workflow (.github/workflows/release.yml) packages the
+# chart with version and appVersion both set to the release (X.Y.Z) and publishes
+# it to oci://ghcr.io/zollo/charts. A source checkout has no appVersion, so
+# image.tag falls back to "latest".
+version: 0.0.0-dev
 
 home: https://github.com/zollo/certainly
 sources:
