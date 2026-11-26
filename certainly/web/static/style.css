@@ -5,8 +5,11 @@
   --border: #2a3347;
   --text: #e6ebf5;
   --text-dim: #97a3b8;
-  --accent: #4f8cff;
-  --accent-2: #6ee7b7;
+  /* Gold/amber brand accent (Navi-inspired theme). */
+  --accent: #f5b300;
+  --accent-2: #fcd34d;
+  --accent-strong: #e08a00;
+  --on-accent: #241a04;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
 
   --grade-aplus: #16a34a;
@@ -29,7 +32,7 @@
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 50% -200px, #1c2740 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 50% -200px, #2b2512 0%, var(--bg) 60%);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.55;
@@ -50,6 +53,7 @@ body {
 .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark { font-size: 28px; }
+.brand-logo { width: 36px; height: 36px; border-radius: 9px; display: block; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
 .tagline { margin: 0; color: var(--text-dim); font-size: 13px; }
 .gh-link { color: var(--text-dim); text-decoration: none; font-size: 14px; }
@@ -88,8 +92,8 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .form-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; gap: 16px; }
 .checkbox { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 14px; cursor: pointer; }
 .btn-primary {
-  background: linear-gradient(180deg, var(--accent) 0%, #3d76e0 100%);
-  color: white;
+  background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent-strong) 100%);
+  color: var(--on-accent);
   border: none;
   border-radius: 10px;
   padding: 11px 24px;
@@ -241,8 +245,8 @@ textarea:focus { outline: none; border-color: var(--accent); }
 /* Share banner (shown after a shared scan completes) */
 .share-banner {
   margin-bottom: 18px;
-  background: linear-gradient(180deg, rgba(79,140,255,0.12), rgba(79,140,255,0.06));
-  border: 1px solid rgba(79,140,255,0.4);
+  background: linear-gradient(180deg, rgba(245,179,0,0.12), rgba(245,179,0,0.06));
+  border: 1px solid rgba(245,179,0,0.4);
   border-radius: 12px;
   padding: 16px 18px;
 }
@@ -264,7 +268,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
 }
 .btn-copy {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
