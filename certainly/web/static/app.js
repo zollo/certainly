@@ -485,7 +485,27 @@ function copyShareUrl() {
   }
 }
 
+function initTheme() {
+  const btn = el("theme-toggle");
+  if (!btn) return;
+  const sync = () => {
+    const isLight = document.documentElement.getAttribute("data-theme") === "light";
+    const label = isLight ? "Switch to dark mode" : "Switch to light mode";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+  };
+  sync();
+  btn.addEventListener("click", () => {
+    const isLight = document.documentElement.getAttribute("data-theme") === "light";
+    const next = isLight ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("certainly_theme", next); } catch (_e) {}
+    sync();
+  });
+}
+
 function init() {
+  initTheme();
   el("scan-btn").addEventListener("click", startScan);
   el("targets").addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") startScan();
