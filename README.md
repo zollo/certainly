@@ -1,30 +1,85 @@
-# 🔒 Certainly
+<p align="center">
+  <img src="certainly/web/static/icons/logo-256.png" alt="Certainly logo" width="128" height="128">
+</p>
 
-**Certainly** is a free and open-source SSL/TLS analyzer — a self-hostable
-alternative to Qualys SSL Labs. Point it at one or more servers and it inspects
-their certificates, supported protocols, and cipher suites, then scores each
-one from **0–100** based on its SSL/TLS security posture.
+<h1 align="center">Certainly</h1>
 
-- 🌐 **Web UI** — analyze up to *N* targets at once (default 10, configurable).
-- 🔌 **REST API** — everything the UI shows is available over an unauthenticated
-  API. Submit a scan, get a **job ID**, poll for status, retrieve results.
-- ⚡ **Parallel** — hosts are scanned concurrently, and each host's protocol and
-  cipher probes run in parallel.
-- 🧮 **Scored** — a weighted score (protocol support, key exchange, cipher
-  strength, certificate) plus a convenience letter grade (A+ … F).
-- 🔎 **Deep certificate detail** — serial number, revocation information
-  (OCSP/CRL endpoints) and a **validated live OCSP status**, OCSP Must-Staple,
-  Certificate Transparency (SCTs), and DNS CAA, plus a post-quantum-cryptography
-  (PQC) finding.
-- 🗃️ **Cached** — results are cached (default 24h, configurable) in Redis.
-- 🔗 **Shareable** — optionally save a scan and share it via a public link that
-  expires automatically (default 24h). Off by default.
-- 📦 **Container-native** — `docker compose up` and you're running. All config
-  via environment variables or a `.env` file.
+<p align="center">
+  <strong>Know exactly how any server's SSL/TLS stacks up.</strong><br>
+  A free, open-source, self-hostable alternative to Qualys SSL Labs.
+</p>
+
+<p align="center">
+  <a href="https://github.com/zollo/certainly/actions/workflows/release.yml"><img src="https://github.com/zollo/certainly/actions/workflows/release.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/zollo/certainly/releases"><img src="https://img.shields.io/github/v/release/zollo/certainly" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/zollo/certainly" alt="License: MIT"></a>
+</p>
 
 ---
 
-## Quick start (Docker)
+Point Certainly at one or more servers and it inspects their certificates,
+supported protocols and cipher suites, then scores each one from **0–100** with
+a convenience letter grade (A+ … F). Everything the web UI shows is also
+available over a simple REST API, so you can wire scans into scripts and CI. Run
+it yourself with `docker compose up`, or see a live instance at
+**[certainly.zollo.net](https://certainly.zollo.net)**.
+
+<p align="center">
+  <img src="docs/images/certainly-dark.png" alt="Certainly analyzing a server, with a score breakdown" width="760">
+</p>
+
+## Features
+
+**Analyze any server**
+- A clean, mobile-friendly web UI — scan up to *N* targets at once (default 10,
+  configurable).
+- Accepts hostnames or URLs (`example.com`, `host:8443`, `https://…`).
+- Hosts are scanned concurrently, and each host's protocol and cipher probes run
+  in parallel, so a batch finishes fast.
+
+**Scored and graded**
+- A weighted **0–100** score across protocol support, key exchange, cipher
+  strength and certificate, following a methodology inspired by the SSL Labs
+  rating guide.
+- Materially weak conditions (obsolete protocols, broken ciphers, missing
+  forward secrecy, certificate problems) cap the score; a convenience letter
+  grade (A+ … F) sits on top for at-a-glance reading.
+
+**Deep certificate detail**
+- Serial number, revocation endpoints (OCSP/CRL) and a **validated live OCSP
+  status**, OCSP Must-Staple, Certificate Transparency (SCTs), and DNS CAA.
+- Per-host findings, including a post-quantum-cryptography (PQC) readiness check.
+
+**REST API**
+- Everything the UI does goes through an unauthenticated API: submit a scan, get
+  a **job ID**, poll for status, retrieve results. Interactive docs at `/docs`.
+
+**Cache and share**
+- Results are cached in Redis (default 24h, configurable).
+- Optionally save a scan and share it via a public link that expires
+  automatically (off by default).
+
+**Light and dark**
+- A polished interface in both light and dark themes, with your choice
+  remembered. A build-info footer shows exactly which version, commit and build
+  is running.
+
+**Container-native**
+- `docker compose up` and you're running. Every setting is an environment
+  variable or a line in `.env`. Pre-built, signed, multi-arch images ship to
+  GHCR on every release.
+
+<p align="center">
+  <img src="docs/images/certainly-light.png" alt="Certainly in light mode" width="760">
+</p>
+
+## Self-hosting
+
+Certainly is a FastAPI app (web UI + REST API), one or more RQ workers that run
+the scans, and Redis for the job queue and result cache. Images are published to
+GHCR as `ghcr.io/zollo/certainly` for every release.
+
+### Docker Compose
 
 ```bash
 git clone https://github.com/zollo/certainly.git
@@ -32,36 +87,29 @@ cd certainly
 docker compose up --build
 ```
 
-Then open <http://localhost:8000>.
-
-To customize configuration, copy `.env.example` to `.env` and edit it, or set
-`CERTAINLY_*` environment variables directly. Scale scanning throughput by
-adding workers:
+Then open <http://localhost:8000>. To customize configuration, copy
+`.env.example` to `.env` and edit it, or set `CERTAINLY_*` environment variables
+directly. Scale scanning throughput by adding workers:
 
 ```bash
 docker compose up --scale worker=3
 ```
 
-### Using the pre-built image
-
-Every push to `main` publishes a multi-arch image (linux/amd64 + arm64) to the
-GitHub Container Registry via CI. Pull it directly instead of building:
+**Use the pre-built image** instead of building from source — every push to
+`main` publishes a multi-arch image (linux/amd64 + arm64) to GHCR:
 
 ```bash
 docker pull ghcr.io/zollo/certainly:latest
 ```
 
-Every push to `main` cuts a new release (see [Releases & versioning](#releases--versioning)),
-so each published image is tagged `latest`, the exact version `X.Y.Z`, the
-`X.Y` line, and a short commit SHA. Pin `X.Y.Z` for reproducible deploys,
-`X.Y` to float within a minor line, or `latest` for the newest. Images are
-cosign-signed and carry a build-provenance attestation.
+Each published image is tagged `latest`, the exact version `X.Y.Z`, the `X.Y`
+line, and a short commit SHA. Pin `X.Y.Z` for reproducible deploys, `X.Y` to
+float within a minor line, or `latest` for the newest. Images are cosign-signed
+and carry a build-provenance attestation.
 
-## Production deployment
-
-Use `docker-compose.prod.yml`, which pulls the pre-built image instead of
-building from source. It only needs this file (and optionally a `.env`) on the
-host:
+**For production**, use `docker-compose.prod.yml`, which pulls the pre-built
+image, enables Redis persistence (so cached results and job records survive
+restarts) and adds container health checks:
 
 ```bash
 # Run the latest published image
@@ -74,19 +122,7 @@ CERTAINLY_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml up -d --scale worker=3
 ```
 
-The image version is controlled by `CERTAINLY_VERSION` (default `latest`); set
-it inline or in a `.env` file alongside any other `CERTAINLY_*` settings and
-`CERTAINLY_PORT`. Compared to the build-based `docker-compose.yml`, the
-production file also enables Redis persistence (so cached results and job
-records survive restarts) and adds container health checks.
-
-### TrueNAS SCALE
-
-To run Certainly as a **Custom App** on TrueNAS SCALE (Electric Eel 24.10+),
-see [`deploy/truenas/`](deploy/truenas/) — it includes a ready-to-paste
-Compose file and step-by-step install instructions.
-
-## Quick start (local, no Docker)
+### Local (no Docker)
 
 Certainly needs Redis for the job queue and cache. For quick local development
 you can skip both the worker and Redis by enabling the **inline worker**, which
@@ -104,21 +140,43 @@ CERTAINLY_USE_INLINE_WORKER=true uvicorn certainly.main:app --reload
 For the full setup (recommended), run Redis and a worker:
 
 ```bash
-# terminal 1
-redis-server
-
-# terminal 2 — worker
-python -m certainly.worker
-
-# terminal 3 — API + UI
-uvicorn certainly.main:app --reload
+redis-server                      # terminal 1
+python -m certainly.worker        # terminal 2 — worker
+uvicorn certainly.main:app --reload   # terminal 3 — API + UI
 ```
 
----
+### TrueNAS SCALE
+
+To run Certainly as a **Custom App** on TrueNAS SCALE (Electric Eel 24.10+), see
+[`deploy/truenas/`](deploy/truenas/) — a ready-to-paste Compose file with
+step-by-step install instructions.
+
+### Kubernetes (Helm)
+
+A Helm chart is published to GHCR with each release, versioned like the app:
+
+```bash
+helm install certainly oci://ghcr.io/zollo/charts/certainly --version 1.7.0 \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=certainly.example.com
+```
+
+The chart deploys the API, a worker, and a bundled Redis (use an external Redis
+by setting `redis.enabled=false`). See
+[`charts/certainly/README.md`](charts/certainly/README.md) for every value.
+
+### GitOps (Argo CD)
+
+The live instance at [certainly.zollo.net](https://certainly.zollo.net) is
+deployed by Argo CD from [`zollo/homelab-k8s`](https://github.com/zollo/homelab-k8s)
+under `gitops/apps/certainly/` — a `dev` environment tracking the newest chart
+release and a `prod` environment pinned to a chart version. Promote a release to
+prod by bumping `targetRevision` once it has been checked on dev.
 
 ## API
 
 The web UI is built entirely on top of this API. No authentication is required.
+See the interactive docs at **`/docs`** for the complete schema.
 
 ### `POST /api/scan`
 
@@ -152,39 +210,15 @@ When `share` is `true` (and sharing is enabled), the response also includes a
 `share_id` and a `share_url` (e.g. `http://localhost:8000/s/<id>`) that anyone
 can open until it expires.
 
-### `GET /api/shares/{share_id}`
+### Other endpoints
 
-The publicly shared result for a scan submitted with `share: true`. Same shape
-as `GET /api/jobs/{job_id}`, plus `share_expires_at`. Returns `404` once the
-share expires (or if sharing is disabled). The web UI renders this read-only at
-`/s/{share_id}`.
-
-### `GET /api/jobs/{job_id}/status`
-
-Lightweight status for polling:
-
-```json
-{ "job_id": "a1b2c3…", "status": "running", "total": 3, "completed": 0 }
-```
-
-`status` is one of `queued`, `running`, `finished`, `failed`.
-
-### `GET /api/jobs/{job_id}`
-
-The full job record. When `status` is `finished`, `results` contains one entry
-per target with the score, grade, certificate details, protocols, ciphers, and
-findings. See the interactive docs at **`/docs`** for the complete schema.
-
-### `GET /api/config`
-
-Returns UI-relevant limits and flags (`max_targets_per_request`,
-`cache_ttl_seconds`, `default_port`, `enable_sharing`, `share_ttl_seconds`).
-
-### `GET /api/health`
-
-Liveness probe.
-
----
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/jobs/{job_id}/status` | Lightweight status for polling (`queued`, `running`, `finished`, `failed`). |
+| `GET /api/jobs/{job_id}` | The full job record; when `finished`, `results` has one entry per target with score, grade, certificate details, protocols, ciphers and findings. |
+| `GET /api/shares/{share_id}` | The publicly shared result for a scan submitted with `share: true`, plus `share_expires_at`. `404` once it expires. |
+| `GET /api/config` | UI-relevant limits and flags (`max_targets_per_request`, `cache_ttl_seconds`, `default_port`, `enable_sharing`, `share_ttl_seconds`). |
+| `GET /api/health` | Liveness probe. |
 
 ## Scoring
 
@@ -210,8 +244,6 @@ The numeric score maps to a letter grade for at-a-glance reading:
 
 [ssllabs]: https://github.com/ssllabs/research/wiki/SSL-Server-Rating-Guide
 
----
-
 ## Configuration
 
 All settings are read from the environment (prefix `CERTAINLY_`) or a `.env`
@@ -231,8 +263,6 @@ file. See [`.env.example`](.env.example) for the full list. The most common:
 | `CERTAINLY_CAA_DOH_URL`              | `https://dns.google/resolve` | DoH JSON resolver used for CAA lookups.    |
 | `CERTAINLY_REDIS_URL`                | `redis://localhost:6379/0` | Redis for queue + cache.                     |
 | `CERTAINLY_USE_INLINE_WORKER`        | `false`                    | Run jobs in-process (dev only).              |
-
----
 
 ## Architecture
 
@@ -260,9 +290,7 @@ file. See [`.env.example`](.env.example) for the full list. The most common:
 - **`certainly/main.py`** — FastAPI app (API + static UI).
 - **`certainly/worker.py`** — RQ worker entrypoint.
 
----
-
-## Running the tests
+## Development
 
 ```bash
 pip install -e ".[dev]"
@@ -272,33 +300,23 @@ pytest
 The test suite runs fully offline (scoring, target parsing, cipher
 classification, and the API in inline mode) — no network access required.
 
-## Releases & versioning
+**Contribute via PRs with Conventional Commit titles.** A `PR Title` check
+enforces the format (`feat: add X`, `fix: correct Y`, `docs: …`, `ci: …`). The
+repo squash-merges with the **PR title as the commit subject**, so the title
+drives the release version.
 
-Certainly uses [Semantic Versioning](https://semver.org/) driven by
-[Conventional Commits](https://www.conventionalcommits.org/), automated in CI
-(`.github/workflows/release.yml`):
-
-- **Contribute via PRs with Conventional Commit titles.** A `PR Title` check
-  (`.github/workflows/pr-title.yml`) enforces the format, e.g.
-  `feat: add X`, `fix: correct Y`, `docs: …`, `ci: …`. The repo squash-merges
-  with the **PR title as the commit subject**, so the title determines the
-  version bump.
-- **On every merge to `main`**, CI computes the next version from the commits
-  since the last tag — `feat:` → minor, `fix:` → patch, `BREAKING CHANGE:` (or
-  `type!:`) → major, otherwise patch — then tags it, publishes a **GitHub
-  Release** with auto-generated notes, and builds/pushes the signed image.
-- The **first** release is seeded at `v1.0.0`.
-
-> Repo setting to enable: **Settings → General → Pull Requests → Allow squash
-> merging**, with **“Default to pull request title”** for the squash commit
-> message. That makes the enforced PR title the commit subject the versioner
-> reads. (This mirrors `zollo/azuregos`.)
-
-Commit types accepted in PR titles: `feat`, `fix`, `docs`, `chore`, `ci`,
-`build`, `refactor`, `perf`, `test`, `style`, `revert`.
-
----
+**On every merge to `main`**, CI (`.github/workflows/release.yml`) computes the
+next version from the commits since the last tag — `feat:` → minor, `fix:` →
+patch, `BREAKING CHANGE:` (or `type!:`) → major, otherwise patch — then tags it,
+publishes a **GitHub Release** with auto-generated notes, and builds and pushes
+the signed image and Helm chart. Certainly follows
+[Semantic Versioning](https://semver.org/) driven by
+[Conventional Commits](https://www.conventionalcommits.org/); the first release
+was seeded at `v1.0.0`.
 
 ## License
 
 [MIT](LICENSE). Scores are informational and provided without warranty.
+
+**Stack:** FastAPI · RQ · Redis · vanilla JS + CSS · Docker Compose · Helm ·
+Argo CD
